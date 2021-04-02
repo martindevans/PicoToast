@@ -42,6 +42,7 @@
 #include "content/melon.h"
 #include "content/ninja_left.h"
 #include "content/ninja_right.h"
+#include "content/uparrow.h"
 #include "content/heroic_toast_left.h"
 #include "content/heroic_toast_right.h"
 #include "content/SaikyoBlack.h"
@@ -49,31 +50,20 @@
 #include "hardware/structs/vreg_and_chip_reset.h"
 
 #define VGA_MODE vga_mode_640x480_60
-#define N_BERRIES 50
-
 #define DIMDIV 22
 #define GRAVITY 1
 #define RESTITUTION 0.4
 #define FRICTION 0.1
-#define GRIP_FRICTION 0.15
+#define GRIP_FRICTION 0.08
 #define PLAYER_INPUT_SIDEWAYS 4
 #define PLAYER_INPUT_SIDEWAYS_AIR 1
 #define PLAYER_INPUT_JUMP 60
 #define WALL_JUMP_KICK_X 20
-#define WALL_JUMP_KICK_Y 40
+#define WALL_JUMP_KICK_Y 45
 #define MIN_BOUNCE_YVEL 2
 
-font_map_t SaikyoBlack = {
-    .min_char = 33,
-    .max_char = 96,
-    .invalid_char = '?',
-    .char_height = 9,
-    .space_width = 8,
-    .font_pixels = &font_SaikyoBlack_pixels[0],
-    .font_metadata = &font_SaikyoBlack_metadata[0]
-};
-
-level_t *levels[] = {
+#define LEVEL_COUNT 10
+static level_t *levels[] = {
     &level1,
     &level2,
     &level3,
@@ -85,36 +75,52 @@ level_t *levels[] = {
     &level9,
     &level10,
 };
-level_t *level = &level10;
+static level_t *level = &level10;
+static int32_t current_level_index = 0;
+static bool load_pending = false;
 
-float ninja_xvel = 0;
-float ninja_yvel = 0;
-float ninja_xpos = 0;
-float ninja_ypos = 0;
-sprite_t ninja;
+static float ninja_xvel = 0;
+static float ninja_yvel = 0;
+static float ninja_xpos = 0;
+static float ninja_ypos = 0;
+static sprite_t ninja = {
+    .x = 0,
+    .y = 0,
+    .img = ninja_left_32x32,
+    .log_size = 5
+};
 
-sprite_t *melons = NULL;
-sprite_t *enemies = NULL;
-rect_fill_t *walls = NULL;
+static sprite_t up_arrow = {
+    .x = 0,
+    .y = 0,
+    .img = uparrow_32x32,
+    .log_size = 5
+};
+
+static uint32_t melons_remaining;
+static sprite_t *melons = NULL;
+static sprite_t *enemies = NULL;
+static rect_fill_t *walls = NULL;
 
 #define DEBUG_STR_MAX_LEN 50
-int debug_str_length = 0;
-char debug_str[DEBUG_STR_MAX_LEN];
+static int debug_str_length = 0;
+static char debug_str[DEBUG_STR_MAX_LEN];
 
-uint16_t frame_number;
-uint16_t scanline_counter = 0;
-mutex_t scanline_countdown_lock;
-uint32_t core0_scanlines = 0;
-uint32_t core1_scanlines = 0;
+static uint16_t frame_number;
+static uint16_t scanline_counter = 0;
+static mutex_t scanline_countdown_lock;
+static uint32_t core0_scanlines = 0;
+static uint32_t core1_scanlines = 0;
 
 static const uint VSYNC_PIN = PICO_SCANVIDEO_COLOR_PIN_BASE + PICO_SCANVIDEO_COLOR_PIN_COUNT + 1;
 static const uint button_pins[] = {0, 6, 11};
 static uint32_t button_state = 0;
 
 static void frame_update_logic();
+static void async_update_logic();
 static void render_scanline(struct scanvideo_scanline_buffer *dest, int dma_channel);
 
-void __time_critical_func(render_loop)() {
+static void __time_critical_func(render_loop)() {
     int core_num = get_core_num();
     int dma_channel = dma_claim_unused_channel(true);
 
@@ -148,8 +154,12 @@ void __time_critical_func(render_loop)() {
             } else {
                 mutex_exit(&scanline_countdown_lock);
                 
-                // Send a message to the other core telling it that we're waiting.
+                // Send a message to the other core telling it that we're ready for the game update
+                // to proceed
                 multicore_fifo_push_blocking(0);
+
+                // Run some game logic while the other core is doing the update
+                async_update_logic();
 
                 // Wait for a message from the other core telling us that game logic is complete
                 multicore_fifo_pop_blocking();
@@ -172,14 +182,14 @@ void __time_critical_func(render_loop)() {
     dma_channel_unclaim(dma_channel);
 }
 
-struct semaphore video_setup_complete;
+static struct semaphore video_setup_complete;
 
-void core1_func() {
+static void core1_func() {
     sem_acquire_blocking(&video_setup_complete);
     render_loop();
 }
 
-void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *dest, int channel) {
+static void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *dest, int channel) {
     uint16_t l = scanvideo_scanline_number(dest->scanline_id);
     uint16_t *colour_buf = raw_scanline_prepare(dest, VGA_MODE.width);
 
@@ -204,6 +214,9 @@ void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *des
         sprite_sprite16_dma(colour_buf, &enemies[i], l, VGA_MODE.width, channel);
     }
 
+    // Draw off screen indicators
+    sprite_sprite16_dma(colour_buf, &up_arrow, l, VGA_MODE.width, channel);
+
     // Draw the character
     sprite_sprite16_dma(colour_buf, &ninja, l, VGA_MODE.width, channel);
 
@@ -218,19 +231,19 @@ void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *des
     raw_scanline_finish(dest);
 }
 
-int cmp_sprite_x(const void *a, const void *b) {
+static int cmp_sprite_x(const void *a, const void *b) {
     sprite_t *aa = (sprite_t*)a;
     sprite_t *bb = (sprite_t*)b;
     return aa->x - bb->x;
 }
 
-int cmp_fill_x(const void *a, const void *b) {
+static int cmp_fill_x(const void *a, const void *b) {
     rect_fill_t *aa = (rect_fill_t*)a;
     rect_fill_t *bb = (rect_fill_t*)b;
     return aa->x - bb->x;
 }
 
-void set_level(level_t *lvl) {
+static void set_level(level_t *lvl) {
     level = lvl;
 
     ninja_xpos = level->spawnX;
@@ -240,6 +253,7 @@ void set_level(level_t *lvl) {
     ninja_xvel = 0;
     ninja_yvel = 0;
 
+    melons_remaining = lvl->nummelons;
     if (melons != NULL)
         free(melons);
     melons = malloc(lvl->nummelons * sizeof(sprite_t));
@@ -287,11 +301,38 @@ void set_level(level_t *lvl) {
 
 }
 
-inline bool intersects(int16_t x1, int16_t y1, int16_t w1, int16_t h1, int16_t x2, int16_t y2, int16_t w2, int16_t h2) {
+static inline bool intersects(int16_t x1, int16_t y1, int16_t w1, int16_t h1, int16_t x2, int16_t y2, int16_t w2, int16_t h2) {
     return x1 <= (x2 + w2) && (x1 + w1) >= x2 && y1 <= (y2 + h2) && (y1 + h1) >= y2;
 }
 
-void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
+static void __time_critical_func(async_update_logic)() {
+
+    // Render up to 4 audio buffers per frame
+    /*int dma_channel = dma_claim_unused_channel(true);
+    for (size_t i = 0; i < 4; i++) {
+        audio_buffer_t *buffer = take_audio_buffer(audio_producer_queue, false);
+        if (!buffer) {
+            break;
+        }
+
+        //todo: render audio
+
+        give_audio_buffer(audio_producer_queue, buffer);
+    }
+    dma_channel_unclaim(dma_channel);*/
+}
+
+static void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
+
+    // Load new level if necessary
+    if (current_level_index > LEVEL_COUNT) {
+        current_level_index = 0;
+    }
+    if (load_pending) {
+        set_level(levels[current_level_index]);
+        load_pending = false;
+        return;
+    }
 
     // Move all the enemies every other frame (allows them to move 0.5 units/frame)
     if (frame_number & 1) {
@@ -355,6 +396,7 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
         // Check if the hitboxes intersect
         if (intersects(melons[i].x, melons[i].y, 16, 16, ninja.x, ninja.y, 32, 32)) {
             melons[i].y = VGA_MODE.height + 1;
+            melons_remaining--;
         }
     }
 
@@ -386,10 +428,6 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
     for (size_t i = 0; i < level->numboxes; i++) {
         rect_fill_t *w = &walls[i];
 
-        //if (!intersects(w->x, w->y, w->width, w->height, ninja.x, ninja.y, 32, 32))
-        //    continue;
-        //touching_any = true;
-
         // Swept collision detection between wall and player
         hit_t hit;
         float hx = w->width / (float)2;
@@ -416,6 +454,12 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
         };
         if (!intersect_AABB_AABB(&hit, &wall_aabb, &player)) {
             continue;
+        }
+
+        // Check if the next level should be loaded
+        if (i == 0 && melons_remaining == 0) {
+            current_level_index++;
+            load_pending = true;
         }
 
         touching_any = true;
@@ -514,6 +558,15 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
         }
     }
 
+    // Update off screen indicators
+    if (ninja.y < 0) {
+        up_arrow.x = ninja.x;
+        up_arrow.y = 0;
+    } else {
+        up_arrow.x = -100;
+    }
+
+
     // update sprite position
     ninja.x = (int16_t)(ninja_xpos / DIMDIV);
     ninja.y = (int16_t)(ninja_ypos / DIMDIV);
@@ -522,7 +575,7 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
     debug_str_length = snprintf(debug_str, DEBUG_STR_MAX_LEN, "LOAD:%u%% L:%u R:%u T:%u B:%u", (uint32_t)render_load, touching_left_wall, touching_right_wall, touching_roof, touching_floor);
 }
 
-void __time_critical_func(vga_board_button_irq_handler)() {
+static void __time_critical_func(vga_board_button_irq_handler)() {
     int vsync_current_level = gpio_get(VSYNC_PIN);
     gpio_acknowledge_irq(VSYNC_PIN, vsync_current_level ? GPIO_IRQ_EDGE_RISE : GPIO_IRQ_EDGE_FALL);
 
@@ -542,7 +595,7 @@ void __time_critical_func(vga_board_button_irq_handler)() {
     }
 }
 
-void vga_board_init_buttons() {
+static void vga_board_init_buttons() {
     gpio_set_irq_enabled(VSYNC_PIN, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
     irq_set_exclusive_handler(IO_IRQ_BANK0, vga_board_button_irq_handler);
     irq_set_enabled(IO_IRQ_BANK0, true);
@@ -559,11 +612,11 @@ int main(void) {
     vga_board_init_buttons();
 
     // Load a level
-    ninja.x = 0;
-    ninja.y = 0;
-    ninja.img = ninja_left_32x32;
-    ninja.log_size = 5;
-    set_level(levels[0]);
+    current_level_index = 0;
+    set_level(levels[current_level_index]);
+
+    // Initialise audio system
+    //audio_producer_queue = init_audio();
 
     // Initialise video system
     sem_init(&video_setup_complete, 0, 1);
