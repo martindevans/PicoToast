@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#ifndef _SPRITE_H
-#define _SPRITE_H
+#ifndef _SPRITE2_H
+#define _SPRITE2_H
 
 #include "pico/types.h"
 #include "affine_transform.h"
@@ -18,28 +18,6 @@
 //   and return a pointer to this region
 // - After rendering, manipulate this scanbuffer into a form where PIO can
 //   yeet it out on VGA
-
-static inline uint16_t *raw_scanline_prepare(struct scanvideo_scanline_buffer *dest, uint width) {
-    assert(width >= 3);
-    assert(width % 2 == 0);
-    // +1 for the black pixel at the end, -3 because the program outputs n+3 pixels.
-    dest->data[0] = COMPOSABLE_RAW_RUN | (width + 1 - 3 << 16);
-    // After user pixels, 1 black pixel then discard remaining FIFO data
-    dest->data[width / 2 + 2] = 0x0000u | (COMPOSABLE_EOL_ALIGN << 16);
-    dest->data_used = width / 2 + 2;
-    assert(dest->data_used <= dest->data_max);
-    return (uint16_t *) &dest->data[1];
-}
-
-static inline void raw_scanline_finish(struct scanvideo_scanline_buffer *dest) {
-    // Need to pivot the first pixel with the count so that PIO can keep up
-    // with its 1 pixel per 2 clocks
-    uint32_t first = dest->data[0];
-    uint32_t second = dest->data[1];
-    dest->data[0] = (first & 0x0000ffffu) | ((second & 0x0000ffffu) << 16);
-    dest->data[1] = (second & 0xffff0000u) | ((first & 0xffff0000u) >> 16);
-    dest->status = SCANLINE_OK;
-}
 
 typedef struct sprite {
     int16_t x;
@@ -54,6 +32,12 @@ typedef struct {
     int16_t size_x;
     bool span_discontinuous;
 } intersect_t;
+
+static int cmp_sprite_x(const void *a, const void *b) {
+    sprite_t *aa = (sprite_t*)a;
+    sprite_t *bb = (sprite_t*)b;
+    return aa->x - bb->x;
+}
 
 // Always-inline else the compiler does rash things like passing structs in memory
 static inline intersect_t get_sprite_intersect(const sprite_t *sp, uint16_t raster_y, uint raster_w)

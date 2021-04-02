@@ -24,9 +24,12 @@
 #include "hardware/dma.h"
 #include "hardware/irq.h"
 
+#define VGA_MODE vga_mode_640x480_60
+
 #include "sprite.h"
 #include "sprite_dma.h"
 #include "physics/aabb.h"
+#include "sprite/scanline_rendering.h"
 
 #include "levels/level1.h"
 #include "levels/level2.h"
@@ -43,13 +46,14 @@
 #include "content/ninja_left.h"
 #include "content/ninja_right.h"
 #include "content/uparrow.h"
+#include "content/leftarrow.h"
+#include "content/rightarrow.h"
 #include "content/heroic_toast_left.h"
 #include "content/heroic_toast_right.h"
 #include "content/SaikyoBlack.h"
 
 #include "hardware/structs/vreg_and_chip_reset.h"
 
-#define VGA_MODE vga_mode_640x480_60
 #define DIMDIV 22
 #define GRAVITY 1
 #define RESTITUTION 0.4
@@ -96,6 +100,18 @@ static sprite_t up_arrow = {
     .img = uparrow_32x32,
     .log_size = 5
 };
+static sprite_t left_arrow = {
+    .x = 0,
+    .y = 0,
+    .img = leftarrow_32x32,
+    .log_size = 5
+};
+static sprite_t right_arrow = {
+    .x = 0,
+    .y = 0,
+    .img = rightarrow_32x32,
+    .log_size = 5
+};
 
 static uint32_t melons_remaining;
 static sprite_t *melons = NULL;
@@ -106,90 +122,16 @@ static rect_fill_t *walls = NULL;
 static int debug_str_length = 0;
 static char debug_str[DEBUG_STR_MAX_LEN];
 
-static uint16_t frame_number;
-static uint16_t scanline_counter = 0;
-static mutex_t scanline_countdown_lock;
-static uint32_t core0_scanlines = 0;
-static uint32_t core1_scanlines = 0;
-
 static const uint VSYNC_PIN = PICO_SCANVIDEO_COLOR_PIN_BASE + PICO_SCANVIDEO_COLOR_PIN_COUNT + 1;
 static const uint button_pins[] = {0, 6, 11};
 static uint32_t button_state = 0;
-
-static void frame_update_logic();
-static void async_update_logic();
-static void render_scanline(struct scanvideo_scanline_buffer *dest, int dma_channel);
-
-static void __time_critical_func(render_loop)() {
-    int core_num = get_core_num();
-    int dma_channel = dma_claim_unused_channel(true);
-
-    while (true) {
-
-        // Count down the scanline number for this frame. Once there are no scanlines remaining trigger the
-        // game update on core 0
-        mutex_enter_blocking(&scanline_countdown_lock);
-        if (scanline_counter == VGA_MODE.height) {
-            if (core_num == 0) {
-                // Release the lock so that the other core can check the countdown
-                mutex_exit(&scanline_countdown_lock);
-                
-                // Wait for a message from the other core telling us that it has finished
-                // rendering the last frame.
-                multicore_fifo_pop_blocking();
-
-                // Now do the update
-                frame_update_logic(frame_number);
-
-                // Update rendering state
-                frame_number++;
-                scanline_counter = 0;
-                core0_scanlines = 0;
-                core1_scanlines = 0;
-                __dmb();
-
-                // Send a message to the other core telling it that game logic is complete
-                multicore_fifo_push_blocking(0);
-
-            } else {
-                mutex_exit(&scanline_countdown_lock);
-                
-                // Send a message to the other core telling it that we're ready for the game update
-                // to proceed
-                multicore_fifo_push_blocking(0);
-
-                // Run some game logic while the other core is doing the update
-                async_update_logic();
-
-                // Wait for a message from the other core telling us that game logic is complete
-                multicore_fifo_pop_blocking();
-            }
-        } else {
-            scanline_counter++;
-            if (core_num == 0) {
-                core0_scanlines++;
-            } else {
-                core1_scanlines++;
-            }
-            mutex_exit(&scanline_countdown_lock);
-        }
-
-        scanvideo_scanline_buffer_t *scanline_buffer = scanvideo_begin_scanline_generation(true);
-        render_scanline(scanline_buffer, dma_channel);
-        scanvideo_end_scanline_generation(scanline_buffer);
-    }
-
-    dma_channel_unclaim(dma_channel);
-}
-
-static struct semaphore video_setup_complete;
 
 static void core1_func() {
     sem_acquire_blocking(&video_setup_complete);
     render_loop();
 }
 
-static void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *dest, int channel) {
+void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *dest, int channel) {
     uint16_t l = scanvideo_scanline_number(dest->scanline_id);
     uint16_t *colour_buf = raw_scanline_prepare(dest, VGA_MODE.width);
 
@@ -216,6 +158,8 @@ static void __time_critical_func(render_scanline)(struct scanvideo_scanline_buff
 
     // Draw off screen indicators
     sprite_sprite16_dma(colour_buf, &up_arrow, l, VGA_MODE.width, channel);
+    sprite_sprite16_dma(colour_buf, &left_arrow, l, VGA_MODE.width, channel);
+    sprite_sprite16_dma(colour_buf, &right_arrow, l, VGA_MODE.width, channel);
 
     // Draw the character
     sprite_sprite16_dma(colour_buf, &ninja, l, VGA_MODE.width, channel);
@@ -229,18 +173,6 @@ static void __time_critical_func(render_scanline)(struct scanvideo_scanline_buff
     dma_channel_wait_for_finish_blocking(channel);
 
     raw_scanline_finish(dest);
-}
-
-static int cmp_sprite_x(const void *a, const void *b) {
-    sprite_t *aa = (sprite_t*)a;
-    sprite_t *bb = (sprite_t*)b;
-    return aa->x - bb->x;
-}
-
-static int cmp_fill_x(const void *a, const void *b) {
-    rect_fill_t *aa = (rect_fill_t*)a;
-    rect_fill_t *bb = (rect_fill_t*)b;
-    return aa->x - bb->x;
 }
 
 static void set_level(level_t *lvl) {
@@ -305,7 +237,7 @@ static inline bool intersects(int16_t x1, int16_t y1, int16_t w1, int16_t h1, in
     return x1 <= (x2 + w2) && (x1 + w1) >= x2 && y1 <= (y2 + h2) && (y1 + h1) >= y2;
 }
 
-static void __time_critical_func(async_update_logic)() {
+void __time_critical_func(async_update_logic)() {
 
     // Render up to 4 audio buffers per frame
     /*int dma_channel = dma_claim_unused_channel(true);
@@ -322,7 +254,7 @@ static void __time_critical_func(async_update_logic)() {
     dma_channel_unclaim(dma_channel);*/
 }
 
-static void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
+void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
 
     // Load new level if necessary
     if (current_level_index > LEVEL_COUNT) {
@@ -565,7 +497,18 @@ static void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
     } else {
         up_arrow.x = -100;
     }
-
+    if (ninja.x < 0) {
+        left_arrow.x = 0;
+        left_arrow.y = ninja.y;
+    } else {
+        left_arrow.x = -100;
+    }
+    if (ninja.x + 32 > VGA_MODE.width) {
+        right_arrow.x = VGA_MODE.width - 32;
+        right_arrow.y = ninja.y;
+    } else {
+        right_arrow.x = -100;
+    }
 
     // update sprite position
     ninja.x = (int16_t)(ninja_xpos / DIMDIV);

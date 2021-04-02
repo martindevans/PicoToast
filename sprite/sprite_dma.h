@@ -16,6 +16,12 @@ typedef struct rect_fill {
     uint16_t fill_colour;
 } rect_fill_t;
 
+static int cmp_rect_fill_x(const void *a, const void *b) {
+    rect_fill_t *aa = (rect_fill_t*)a;
+    rect_fill_t *bb = (rect_fill_t*)b;
+    return aa->x - bb->x;
+}
+
 typedef struct font_map {
     uint16_t min_char;
     uint16_t max_char;
@@ -49,4 +55,5 @@ void sprite_sprite16_dma(uint16_t *dst, const sprite_t *sprite, uint16_t raster_
 void sprite_blit16_dma(uint16_t *dst, const uint16_t *src, uint len, int dma_channel);
 
 void sprite_string_dma(uint16_t *dst, int16_t x, int16_t y, char *chars, uint16_t chars_len, font_map_t *font, uint16_t raster_y, uint16_t raster_width, int dma_channel);
+
 #endif
