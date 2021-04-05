@@ -8,14 +8,14 @@
     #error "Must define VGA_MODE"
 #endif
 
-static uint16_t frame_number;
+static uint32_t frame_number;
 static uint16_t scanline_counter = 0;
 static mutex_t scanline_countdown_lock;
 static uint32_t core0_scanlines = 0;
 static uint32_t core1_scanlines = 0;
 
 void frame_update_logic(uint32_t frame_number);
-void async_update_logic();
+void async_update_logic(uint32_t frame_number);
 void render_scanline(struct scanvideo_scanline_buffer *dest, int dma_channel);
 
 static inline uint16_t *raw_scanline_prepare(struct scanvideo_scanline_buffer *dest, uint width) {
@@ -74,12 +74,14 @@ void __time_critical_func(render_loop)() {
             } else {
                 mutex_exit(&scanline_countdown_lock);
                 
+                uint32_t saved_frame_number = frame_number;
+
                 // Send a message to the other core telling it that we're ready for the game update
                 // to proceed
                 multicore_fifo_push_blocking(0);
 
                 // Run some game logic while the other core is doing the update
-                async_update_logic();
+                async_update_logic(saved_frame_number);
 
                 // Wait for a message from the other core telling us that game logic is complete
                 multicore_fifo_pop_blocking();

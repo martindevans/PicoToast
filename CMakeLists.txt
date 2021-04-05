@@ -20,6 +20,8 @@ add_executable(toast
         sprite_demo.c
 )
 
+target_include_directories(toast PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+
 # Add pico_stdlib library which aggregates commonly used features
 target_link_libraries(toast
     pico_stdlib
@@ -27,15 +29,17 @@ target_link_libraries(toast
     pico_scanvideo_dpi
     pico_multicore
     sprite
+    tinyusb_host
+    tinyusb_board
 )
 
 target_compile_definitions(toast PRIVATE
         PICO_SCANVIDEO_MAX_SCANLINE_BUFFER_WORDS=500
 )
 
-# Send Serial output to USB and disable serial to UART
-pico_enable_stdio_usb(toast 1)
-pico_enable_stdio_uart(toast 0)
+# Send Serial output to UART
+pico_enable_stdio_usb(toast 0)
+pico_enable_stdio_uart(toast 1)
 
 pico_add_extra_outputs(toast)
 

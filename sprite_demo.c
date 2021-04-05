@@ -24,6 +24,10 @@
 #include "hardware/dma.h"
 #include "hardware/irq.h"
 
+#include "bsp/board.h"
+#include "tusb.h"
+#include "hid/hid.h"
+
 #define VGA_MODE vga_mode_640x480_60
 
 #include "sprite.h"
@@ -41,6 +45,26 @@
 #include "levels/level8.h"
 #include "levels/level9.h"
 #include "levels/level10.h"
+#include "levels/level11.h"
+#include "levels/level12.h"
+#include "levels/level13.h"
+#include "levels/level14.h"
+#include "levels/level15.h"
+#include "levels/level16.h"
+#include "levels/level17.h"
+#include "levels/level18.h"
+#include "levels/level19.h"
+#include "levels/level20.h"
+#include "levels/level21.h"
+#include "levels/level22.h"
+#include "levels/level23.h"
+#include "levels/level24.h"
+#include "levels/level25.h"
+#include "levels/level26.h"
+#include "levels/level27.h"
+#include "levels/level28.h"
+#include "levels/level29.h"
+#include "levels/level30.h"
 
 #include "content/melon.h"
 #include "content/ninja_left.h"
@@ -57,8 +81,8 @@
 #define DIMDIV 22
 #define GRAVITY 1
 #define RESTITUTION 0.4
-#define FRICTION 0.1
-#define GRIP_FRICTION 0.08
+#define FRICTION 0.08
+#define GRIP_FRICTION 0.06
 #define PLAYER_INPUT_SIDEWAYS 4
 #define PLAYER_INPUT_SIDEWAYS_AIR 1
 #define PLAYER_INPUT_JUMP 60
@@ -66,7 +90,7 @@
 #define WALL_JUMP_KICK_Y 45
 #define MIN_BOUNCE_YVEL 2
 
-#define LEVEL_COUNT 10
+#define LEVEL_COUNT 26
 static level_t *levels[] = {
     &level1,
     &level2,
@@ -78,8 +102,28 @@ static level_t *levels[] = {
     &level8,
     &level9,
     &level10,
+    &level11,
+    &level12,
+    &level13,
+    &level14,
+    //&level15,
+    &level16,
+    &level17,
+    &level18,
+    //&level19,
+    &level20,
+    &level21,
+    //&level22,
+    &level23,
+    //&level24,
+    &level25,
+    &level26,
+    &level27,
+    &level28,
+    &level29,
+    &level30,
 };
-static level_t *level = &level10;
+static level_t *level = &level1;
 static int32_t current_level_index = 0;
 static bool load_pending = false;
 
@@ -237,7 +281,13 @@ static inline bool intersects(int16_t x1, int16_t y1, int16_t w1, int16_t h1, in
     return x1 <= (x2 + w2) && (x1 + w1) >= x2 && y1 <= (y2 + h2) && (y1 + h1) >= y2;
 }
 
-void __time_critical_func(async_update_logic)() {
+mutex_t hid_input_lock;
+
+void __time_critical_func(async_update_logic)(uint32_t frame_number) {
+
+    // Poll keyboard
+    tuh_task();
+    hid_task();
 
     // Render up to 4 audio buffers per frame
     /*int dma_channel = dma_claim_unused_channel(true);
@@ -254,10 +304,43 @@ void __time_critical_func(async_update_logic)() {
     dma_channel_unclaim(dma_channel);*/
 }
 
+static bool hid_jump_pressed = false;
+static bool hid_left_pressed = false;
+static bool hid_right_pressed = false;
+static bool hid_cheat_level_up = false;
+void process_kbd_report(hid_keyboard_report_t const *p_new_report) {
+
+    mutex_enter_blocking(&hid_input_lock);
+    hid_jump_pressed = false;
+    hid_left_pressed = false;
+    hid_right_pressed = false;
+
+    for (size_t i = 0; i < 6; i++) {
+        switch (p_new_report->keycode[i]) {
+            case HID_KEY_ARROW_UP:
+            case HID_KEY_W:
+                hid_jump_pressed = true;
+                break;
+            case HID_KEY_ARROW_LEFT:
+            case HID_KEY_A:
+                hid_left_pressed = true;
+                break;
+            case HID_KEY_ARROW_RIGHT:
+            case HID_KEY_D:
+                hid_right_pressed = true;
+                break;
+            case HID_KEY_F11:
+                hid_cheat_level_up = true;
+                break;
+        }
+    }
+    mutex_exit(&hid_input_lock);
+}
+
 void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
 
     // Load new level if necessary
-    if (current_level_index > LEVEL_COUNT) {
+    if (current_level_index >= LEVEL_COUNT) {
         current_level_index = 0;
     }
     if (load_pending) {
@@ -348,6 +431,18 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
     bool in_jump = (button_state & 2) != 0;
     bool in_left = (button_state & 4) != 0;
     bool in_right = (button_state & 1) != 0;
+
+    mutex_enter_blocking(&hid_input_lock);
+    in_jump = hid_jump_pressed;
+    in_left = hid_left_pressed;
+    in_right = hid_right_pressed;
+
+    if (hid_cheat_level_up) {
+        current_level_index++;
+        load_pending = hid_cheat_level_up;
+        hid_cheat_level_up = false;
+    }
+    mutex_exit(&hid_input_lock);
 
     // Check if the player intersects any walls
     bool touching_floor = false;
@@ -515,7 +610,7 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
     ninja.y = (int16_t)(ninja_ypos / DIMDIV);
 
     float render_load = (((float)MIN(core0_scanlines, core1_scanlines)) / ((float)MAX(core0_scanlines, core1_scanlines))) * 100;
-    debug_str_length = snprintf(debug_str, DEBUG_STR_MAX_LEN, "LOAD:%u%% L:%u R:%u T:%u B:%u", (uint32_t)render_load, touching_left_wall, touching_right_wall, touching_roof, touching_floor);
+    debug_str_length = snprintf(debug_str, DEBUG_STR_MAX_LEN, "LOAD:%u%% L:%u R:%u T:%u B:%u LVL:%u", (uint32_t)render_load, touching_left_wall, touching_right_wall, touching_roof, touching_floor, current_level_index);
 }
 
 static void __time_critical_func(vga_board_button_irq_handler)() {
@@ -554,6 +649,10 @@ int main(void) {
     stdio_init_all();
     vga_board_init_buttons();
 
+    // Initialise USB system
+    board_init();
+    tusb_init();
+
     // Load a level
     current_level_index = 0;
     set_level(levels[current_level_index]);
@@ -562,6 +661,7 @@ int main(void) {
     //audio_producer_queue = init_audio();
 
     // Initialise video system
+    mutex_init(&hid_input_lock);
     sem_init(&video_setup_complete, 0, 1);
     mutex_init(&scanline_countdown_lock);
     multicore_launch_core1(core1_func);
