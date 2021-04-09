@@ -57,14 +57,14 @@ extern "C" {
 // CONFIGURATION
 //--------------------------------------------------------------------
 
-#define CFG_TUH_HUB                 0
+#define CFG_TUH_HUB                 1
 #define CFG_TUH_HID_KEYBOARD        1
 #define CFG_TUH_HID_MOUSE           0
 #define CFG_TUSB_HOST_HID_GENERIC   0 // (not yet supported)
 #define CFG_TUH_MSC                 0
 #define CFG_TUH_CDC                 0
 
-#define CFG_TUSB_HOST_DEVICE_MAX    (CFG_TUH_HUB ? 5 : 1) // normal hub has 4 ports
+#define CFG_TUSB_HOST_DEVICE_MAX    (CFG_TUH_HUB ? 7 : 1)
 
 #ifdef __cplusplus
 }

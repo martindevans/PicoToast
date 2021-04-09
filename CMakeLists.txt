@@ -39,7 +39,7 @@ target_compile_definitions(toast PRIVATE
 
 # Send Serial output to UART
 pico_enable_stdio_usb(toast 0)
-pico_enable_stdio_uart(toast 1)
+pico_enable_stdio_uart(toast 0)
 
 pico_add_extra_outputs(toast)
 

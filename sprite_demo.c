@@ -83,11 +83,11 @@
 #define RESTITUTION 0.4
 #define FRICTION 0.08
 #define GRIP_FRICTION 0.06
-#define PLAYER_INPUT_SIDEWAYS 4
-#define PLAYER_INPUT_SIDEWAYS_AIR 1
+#define PLAYER_INPUT_SIDEWAYS 3.5
+#define PLAYER_INPUT_SIDEWAYS_AIR 1.1
 #define PLAYER_INPUT_JUMP 60
 #define WALL_JUMP_KICK_X 20
-#define WALL_JUMP_KICK_Y 45
+#define WALL_JUMP_KICK_Y 50
 #define MIN_BOUNCE_YVEL 2
 
 #define LEVEL_COUNT 26
@@ -169,11 +169,6 @@ static char debug_str[DEBUG_STR_MAX_LEN];
 static const uint VSYNC_PIN = PICO_SCANVIDEO_COLOR_PIN_BASE + PICO_SCANVIDEO_COLOR_PIN_COUNT + 1;
 static const uint button_pins[] = {0, 6, 11};
 static uint32_t button_state = 0;
-
-static void core1_func() {
-    sem_acquire_blocking(&video_setup_complete);
-    render_loop();
-}
 
 void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *dest, int channel) {
     uint16_t l = scanvideo_scanline_number(dest->scanline_id);
@@ -281,29 +276,12 @@ static inline bool intersects(int16_t x1, int16_t y1, int16_t w1, int16_t h1, in
     return x1 <= (x2 + w2) && (x1 + w1) >= x2 && y1 <= (y2 + h2) && (y1 + h1) >= y2;
 }
 
-mutex_t hid_input_lock;
-
 void __time_critical_func(async_update_logic)(uint32_t frame_number) {
-
-    // Poll keyboard
     tuh_task();
     hid_task();
-
-    // Render up to 4 audio buffers per frame
-    /*int dma_channel = dma_claim_unused_channel(true);
-    for (size_t i = 0; i < 4; i++) {
-        audio_buffer_t *buffer = take_audio_buffer(audio_producer_queue, false);
-        if (!buffer) {
-            break;
-        }
-
-        //todo: render audio
-
-        give_audio_buffer(audio_producer_queue, buffer);
-    }
-    dma_channel_unclaim(dma_channel);*/
 }
 
+static mutex_t hid_input_lock;
 static bool hid_jump_pressed = false;
 static bool hid_left_pressed = false;
 static bool hid_right_pressed = false;
@@ -415,23 +393,12 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
         }
     }
 
-    // Read serial input to switch levels
-    int c = PICO_ERROR_TIMEOUT;
-    do
-    {
-        c = getchar_timeout_us(0);
-
-        if (c >= '0' && c <= '9') {
-            set_level(levels[c - 48]);
-            return;
-        }
-    } while (c != PICO_ERROR_TIMEOUT);
-
     // Read player input from hardware buttons
     bool in_jump = (button_state & 2) != 0;
     bool in_left = (button_state & 4) != 0;
     bool in_right = (button_state & 1) != 0;
 
+    // Read play input from keyboard
     mutex_enter_blocking(&hid_input_lock);
     in_jump = hid_jump_pressed;
     in_left = hid_left_pressed;
@@ -455,7 +422,6 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
     for (size_t i = 0; i < level->numboxes; i++) {
         rect_fill_t *w = &walls[i];
 
-        // Swept collision detection between wall and player
         hit_t hit;
         float hx = w->width / (float)2;
         float hy = w->height / (float)2;
@@ -487,6 +453,7 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
         if (i == 0 && melons_remaining == 0) {
             current_level_index++;
             load_pending = true;
+            break;
         }
 
         touching_any = true;
@@ -518,7 +485,7 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
             ninja_yvel = 0;
     }
     if (touching_roof) {
-        ninja_yvel = 0;
+        ninja_yvel = GRAVITY;
     }
     if (touching_left_wall || touching_right_wall) {
         ninja_xvel = -ninja_xvel * RESTITUTION;
@@ -584,6 +551,8 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
             ninja.img = ninja_right_32x32;
         }
     }
+    ninja.x = (int16_t)(ninja_xpos / DIMDIV);
+    ninja.y = (int16_t)(ninja_ypos / DIMDIV);
 
     // Update off screen indicators
     if (ninja.y < 0) {
@@ -605,15 +574,10 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
         right_arrow.x = -100;
     }
 
-    // update sprite position
-    ninja.x = (int16_t)(ninja_xpos / DIMDIV);
-    ninja.y = (int16_t)(ninja_ypos / DIMDIV);
-
-    float render_load = (((float)MIN(core0_scanlines, core1_scanlines)) / ((float)MAX(core0_scanlines, core1_scanlines))) * 100;
-    debug_str_length = snprintf(debug_str, DEBUG_STR_MAX_LEN, "LOAD:%u%% L:%u R:%u T:%u B:%u LVL:%u", (uint32_t)render_load, touching_left_wall, touching_right_wall, touching_roof, touching_floor, current_level_index);
+    debug_str_length = snprintf(debug_str, DEBUG_STR_MAX_LEN, "L:%u R:%u T:%u B:%u LVL:%u", touching_left_wall, touching_right_wall, touching_roof, touching_floor, current_level_index);
 }
 
-static void __time_critical_func(vga_board_button_irq_handler)() {
+/* static void __time_critical_func(vga_board_button_irq_handler)() {
     int vsync_current_level = gpio_get(VSYNC_PIN);
     gpio_acknowledge_irq(VSYNC_PIN, vsync_current_level ? GPIO_IRQ_EDGE_RISE : GPIO_IRQ_EDGE_FALL);
 
@@ -637,7 +601,7 @@ static void vga_board_init_buttons() {
     gpio_set_irq_enabled(VSYNC_PIN, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
     irq_set_exclusive_handler(IO_IRQ_BANK0, vga_board_button_irq_handler);
     irq_set_enabled(IO_IRQ_BANK0, true);
-}
+} */
 
 int main(void) {
 
@@ -647,7 +611,7 @@ int main(void) {
 
     // Setup serial communication and buttons
     stdio_init_all();
-    vga_board_init_buttons();
+    //vga_board_init_buttons();
 
     // Initialise USB system
     board_init();
@@ -662,13 +626,7 @@ int main(void) {
 
     // Initialise video system
     mutex_init(&hid_input_lock);
-    sem_init(&video_setup_complete, 0, 1);
-    mutex_init(&scanline_countdown_lock);
-    multicore_launch_core1(core1_func);
-    hard_assert(VGA_MODE.width + 4 <= PICO_SCANVIDEO_MAX_SCANLINE_BUFFER_WORDS * 2);
-    scanvideo_setup(&VGA_MODE);
-    scanvideo_timing_enable(true);
-    sem_release(&video_setup_complete);
+    init_scanline_rendering(&VGA_MODE);
 
     // Enter the infinite video loop
     render_loop();
