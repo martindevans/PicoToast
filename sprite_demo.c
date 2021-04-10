@@ -134,27 +134,31 @@ static float ninja_ypos = 0;
 static sprite_t ninja = {
     .x = 0,
     .y = 0,
-    .img = ninja_left_32x32,
-    .log_size = 5
+    .data = ninja_left_32x32,
+    .size_x = 32,
+    .size_y = 32,
 };
 
 static sprite_t up_arrow = {
     .x = 0,
     .y = 0,
-    .img = uparrow_32x32,
-    .log_size = 5
+    .data = uparrow_32x12,
+    .size_x = 32,
+    .size_y = 12,
 };
 static sprite_t left_arrow = {
     .x = 0,
     .y = 0,
-    .img = leftarrow_32x32,
-    .log_size = 5
+    .data = leftarrow_12x32,
+    .size_x = 12,
+    .size_y = 32,
 };
 static sprite_t right_arrow = {
     .x = 0,
     .y = 0,
-    .img = rightarrow_32x32,
-    .log_size = 5
+    .data = rightarrow_12x32,
+    .size_x = 12,
+    .size_y = 32,
 };
 
 static uint32_t melons_remaining;
@@ -193,6 +197,8 @@ void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *des
     // Draw the enemies
     for (size_t i = 0; i < level->numboxes; i++) {
         sprite_sprite16_dma(colour_buf, &enemies[i], l, VGA_MODE.width, channel);
+        //if (enemies[i].y < l && enemies[i].y + enemies[i].size_y > l)
+          //  sprite_fill16_dma(colour_buf, PICO_SCANVIDEO_PIXEL_FROM_RGB8(0xFF, 0xc0, 0xFF), enemies[i].x, enemies[i].size_x, channel);
     }
 
     // Draw off screen indicators
@@ -232,8 +238,9 @@ static void set_level(level_t *lvl) {
         sprite_t *m = &melons[i];
         m->x = lvl->melons[i].x / DIMDIV - 8;
         m->y = lvl->melons[i].y / DIMDIV - 8;
-        m->log_size = 4;
-        m->img = &melon_16x16[0];
+        m->size_x = 16;
+        m->size_y = 16;
+        m->data = melon_16x16;
     }
 
     // Sort melons into X order to make collision checks faster (once we find a melon to the
@@ -261,9 +268,10 @@ static void set_level(level_t *lvl) {
         box_t *b = &lvl->boxes[i];
 
         e->x = walls[i].x + walls[i].width / 2 - 8;
-        e->y = walls[i].y - 32;
-        e->log_size = 5;
-        e->img = &heroic_toast_left_32x32[0];
+        e->y = walls[i].y - 23;
+        e->size_x = 23;
+        e->size_y = 23;
+        e->data = heroic_toast_left_23x23;
 
         if (!lvl->boxes[i].has_enemy) {
             e->y = 10000;
@@ -333,18 +341,18 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
             sprite_t *e = &enemies[i];
             rect_fill_t *w = &walls[i];
 
-            int16_t dir = e->img == &heroic_toast_left_32x32[0] ? -1 : 1;
+            int16_t dir = e->data.pixels == heroic_toast_left_23x23.pixels ? -1 : 1;
             e->x += dir;
 
             if (dir < 0) {
                 if (e->x <= w->x) {
-                    e->img = &heroic_toast_right_32x32[0];
+                    e->data = heroic_toast_right_23x23;
                     e->x = w->x;
                 }
             } else {
-                if (e->x + 32 >= w->x + w->width) {
-                    e->img = &heroic_toast_left_32x32[0];
-                    e->x = w->x + w->width - 32;
+                if (e->x + e->size_x >= w->x + w->width) {
+                    e->data = heroic_toast_left_23x23;
+                    e->x = w->x + w->width - e->size_x;
                 }
             }
         }
@@ -358,7 +366,7 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
             continue;
 
         sprite_t *e = &enemies[i];
-        if (intersects(e->x + 5, e->y + 10, 32-10, 32-10, ninja.x, ninja.y, 32, 32)) {
+        if (intersects(e->x, e->y, e->size_x, e->size_y, ninja.x, ninja.y, ninja.size_x, ninja.size_y)) {
             dead = true;
             break;
         }
@@ -546,9 +554,9 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
     // Update sprite graphic
     if (fabsf(ninja_xvel) > 0) {
         if (ninja_xvel < 0) {
-            ninja.img = ninja_left_32x32;
+            ninja.data = ninja_left_32x32;
         } else {
-            ninja.img = ninja_right_32x32;
+            ninja.data = ninja_right_32x32;
         }
     }
     ninja.x = (int16_t)(ninja_xpos / DIMDIV);
@@ -567,14 +575,14 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
     } else {
         left_arrow.x = -100;
     }
-    if (ninja.x + 32 > VGA_MODE.width) {
-        right_arrow.x = VGA_MODE.width - 32;
+    if (ninja.x + ninja.size_x > VGA_MODE.width) {
+        right_arrow.x = VGA_MODE.width - right_arrow.size_x;
         right_arrow.y = ninja.y;
     } else {
         right_arrow.x = -100;
     }
 
-    debug_str_length = snprintf(debug_str, DEBUG_STR_MAX_LEN, "L:%u R:%u T:%u B:%u LVL:%u", touching_left_wall, touching_right_wall, touching_roof, touching_floor, current_level_index);
+    debug_str_length = snprintf(debug_str, DEBUG_STR_MAX_LEN, "F:%u L:%u R:%u T:%u B:%u LVL:%u", frame_number, touching_left_wall, touching_right_wall, touching_roof, touching_floor, current_level_index);
 }
 
 /* static void __time_critical_func(vga_board_button_irq_handler)() {
@@ -606,7 +614,7 @@ static void vga_board_init_buttons() {
 int main(void) {
 
     // Overclock
-    vreg_set_voltage(VREG_VOLTAGE_1_20);
+    vreg_set_voltage(VREG_VOLTAGE_1_30);
     set_sys_clock_khz(250000, true);
 
     // Setup serial communication and buttons

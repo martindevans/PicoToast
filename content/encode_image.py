@@ -61,6 +61,44 @@ def encode_pixel16(pixel):
     color = ((pixel[0] >> 3) << 0) | ((pixel[1] >> 3) << 6) | ((pixel[2] >> 3) << 11) | alpha
     return color
 
+def format_pixel_data(rows, print, width, buf_width, prefix, metadata):
+    
+    
+
+    buffer=prefix
+    for idx, row in enumerate(rows):
+        alpha_prelude = find_alpha_prelude(row)
+        alpha_epilogue = width - find_alpha_epilogue(row[alpha_prelude:]);
+        mid_alpha = find_mid_alpha(row[alpha_prelude:-alpha_epilogue])
+
+        metadata.append(alpha_epilogue & 0xFFFF)
+        metadata.append(((alpha_prelude & 0x7FFF)) | ((mid_alpha != 0) << 15))
+
+        for pixel in row:
+            alpha = 1 << 5
+            if pixel[3] == 0:
+                alpha = 0
+            color = ((pixel[0] >> 3) << 0) | ((pixel[1] >> 3) << 6) | ((pixel[2] >> 3) << 11) | alpha
+            buffer+=hex(color) + ","
+            if len(buffer) >= buf_width:
+                print(buffer)
+                buffer=prefix
+        print(buffer)
+        buffer=prefix
+        print()
+    if buffer != prefix:
+        print(buffer)
+
+def format_metadata(metadata, print, buf_width, prefix):
+    buffer=prefix
+    for m in metadata:
+        buffer+=hex(m) + ","
+        if len(buffer) >= buf_width:
+                print(buffer)
+                buffer=prefix
+    if buffer != prefix:
+        print(buffer)
+
 def format_c(name, rows, print):
 
     buf_width=140
@@ -70,42 +108,19 @@ def format_c(name, rows, print):
     width=len(rows[0])
 
     print("#include <stdint.h>")
-    print(f"static uint16_t __attribute__((aligned(4))) {name}_{width}x{height}[] = {{")
-
-    buffer="    "
-    for idx, row in enumerate(rows):
-        alpha_prelude = find_alpha_prelude(row)
-        alpha_epilogue = width - find_alpha_epilogue(row[alpha_prelude:]);
-        mid_alpha = find_mid_alpha(row[alpha_prelude:-alpha_epilogue])
-
-        metadata.append(alpha_epilogue & 0xFFFF)
-        metadata.append(((alpha_prelude & 0x7FFF)) | ((mid_alpha != 0) << 15))
-
-        print("    // Row " + str(idx))
-        for pixel in row:
-            alpha = 1 << 5
-            if pixel[3] == 0:
-                alpha = 0
-            color = ((pixel[0] >> 3) << 0) | ((pixel[1] >> 3) << 6) | ((pixel[2] >> 3) << 11) | alpha
-            buffer+=hex(color) + ","
-            if len(buffer) >= buf_width:
-                print(buffer)
-                buffer="    "
-        print(buffer)
-        buffer="    "
-        print("")
-    if buffer != "    ":
-        print(buffer)
-
-    print("    // Metadata")
-    for m in metadata:
-        buffer+=hex(m) + ","
-        if len(buffer) >= buf_width:
-                print(buffer)
-                buffer="    "
-    if buffer != "    ":
-        print(buffer)
-
+    print("#include \"sprite.h\"")
+    print()
+    print(f"static uint16_t __attribute__((aligned(4))) {name}_pixels_{width}x{height}[] = {{")
+    format_pixel_data(rows, print, width, buf_width, "    ", metadata)
+    print("};")
+    print()
+    print(f"static uint16_t __attribute__((aligned(4))) {name}_metadata_{width}x{height}[] = {{")
+    format_metadata(metadata, print, buf_width, "    ")
+    print("};")
+    print()
+    print(f"static const image_data_t {name}_{width}x{height} = {{")
+    print(f"    .pixels = {name}_pixels_{width}x{height},")
+    print(f"    .metadata = (uint32_t*){name}_metadata_{width}x{height}")
     print("};")
 
 output = None
@@ -120,11 +135,8 @@ def main():
     parser.add_argument("name", help='buffer name')
     args = parser.parse_args()
 
+    print(args.input_path)
     (im, width, height) = get_image(args.input_path)
-    if (width != height):
-        print("Image is not square")
-    if (math.log2(width) != int(math.log2(width))):
-        print("Image size is not pow2")
 
     global output
     output = open(args.output_path, "w", encoding="utf-8", newline='\n')

@@ -8,7 +8,6 @@
 #define _SPRITE2_H
 
 #include "pico/types.h"
-#include "affine_transform.h"
 
 #include "pico/scanvideo.h"
 #include "pico/scanvideo/composable_scanline.h"
@@ -19,11 +18,17 @@
 // - After rendering, manipulate this scanbuffer into a form where PIO can
 //   yeet it out on VGA
 
+typedef struct image_data {
+    const uint16_t *pixels;
+    const uint32_t *metadata;
+} image_data_t;
+
 typedef struct sprite {
     int16_t x;
     int16_t y;
-    const void *img;
-    uint8_t log_size; // always square
+    image_data_t data;
+    uint8_t size_x;
+    uint8_t size_y;
 } sprite_t;
 
 typedef struct {
@@ -42,17 +47,18 @@ static int cmp_sprite_x(const void *a, const void *b) {
 // Always-inline else the compiler does rash things like passing structs in memory
 static inline intersect_t get_sprite_intersect(const sprite_t *sp, uint16_t raster_y, uint raster_w)
 {
-    int size = 1u << sp->log_size;
+    uint8_t size_x = sp->size_x;
+    uint8_t size_y = sp->size_y;
     intersect_t isct = {0};
 
     // Calculate offset to the correct row. Early out if it's not within the bounds of the sprite
     isct.tex_offs_y = ((int16_t)raster_y) - sp->y;
-    if (isct.tex_offs_y < 0 || isct.tex_offs_y >= size)
+    if (isct.tex_offs_y < 0 || isct.tex_offs_y >= size_y)
         return isct;
 
     // Calculate offset to correct column
     isct.tex_offs_x = 0;
-    isct.size_x = size;
+    isct.size_x = size_x;
 
     // Check if it's off the left of the screen. Adjust offset and width to compensate.
     if (sp->x < 0)
@@ -62,7 +68,7 @@ static inline intersect_t get_sprite_intersect(const sprite_t *sp, uint16_t rast
     }
 
     // Check if it's off the right of the screen. Adjust size to compensate
-    int16_t overhang = (sp->x + size) - raster_w;
+    int16_t overhang = (sp->x + size_x) - raster_w;
     if (overhang > 0)
     {
         isct.size_x -= overhang;
@@ -86,18 +92,13 @@ static inline intersect_t intersect_with_metadata(intersect_t isct, uint32_t met
 }
 
 static inline intersect_t calculate_sprite_span(const sprite_t *sprite, uint raster_y, uint raster_width, int pixel_bytes) {
-    uint16_t size = 1u << sprite->log_size;
-
     // Get the simple intersection. If it's zero width early out right away.
     intersect_t isct = get_sprite_intersect(sprite, raster_y, raster_width);
     if (isct.size_x <= 0)
         return isct;
 
-    // If the sprite has opacity metadata we may be able to narrow down the intersection a bit
-    const uint8_t *img = sprite->img;
-
-    // Metadata is one word per row, concatenated to end of pixel data
-    uint32_t meta = ((uint32_t *)(sprite->img + size * size * pixel_bytes))[isct.tex_offs_y];
+    // Use metadata to narrow down span
+    const uint32_t meta = sprite->data.metadata[isct.tex_offs_y];
     isct = intersect_with_metadata(isct, meta);
     isct.span_discontinuous = !!!(meta & (1u << 31));
 
@@ -116,22 +117,5 @@ void sprite_blit8(uint8_t *dst, const uint8_t *src, uint len);
 void sprite_blit8_alpha(uint8_t *dst, const uint8_t *src, uint len);
 void sprite_blit16(uint16_t *dst, const uint16_t *src, uint len);
 void sprite_blit16_alpha(uint16_t *dst, const uint16_t *src, uint len);
-
-// These are just inner loops, and require INTERP0 to be configured before calling:
-void sprite_ablit8_loop(uint8_t *dst, uint len);
-void sprite_ablit8_alpha_loop(uint8_t *dst, uint len);
-void sprite_ablit16_loop(uint16_t *dst, uint len);
-void sprite_ablit16_alpha_loop(uint16_t *dst, uint len);
-
-// ----------------------------------------------------------------------------
-// Functions from sprite.c
-
-// Render the intersection of a sprite with the current scanline:
-void sprite_sprite8(uint8_t *scanbuf, const sprite_t *sp, uint raster_y, uint raster_w);
-void sprite_sprite16(uint16_t *scanbuf, const sprite_t *sp, uint raster_y, uint raster_w);
-
-// As above, but apply an affine transform on sprite texture lookups (SLOW, even with interpolator)
-void sprite_asprite8(uint8_t *scanbuf, const sprite_t *sp, const affine_transform_t atrans, uint raster_y, uint raster_w);
-void sprite_asprite16(uint16_t *scanbuf, const sprite_t *sp, const affine_transform_t atrans, uint raster_y, uint raster_w);
 
 #endif
