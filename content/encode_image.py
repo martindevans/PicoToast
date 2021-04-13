@@ -120,7 +120,9 @@ def format_c(name, rows, print):
     print()
     print(f"static const image_data_t {name}_{width}x{height} = {{")
     print(f"    .pixels = {name}_pixels_{width}x{height},")
-    print(f"    .metadata = (uint32_t*){name}_metadata_{width}x{height}")
+    print(f"    .metadata = (uint32_t*){name}_metadata_{width}x{height},")
+    print(f"    .size_x = {width},")
+    print(f"    .size_y = {height}")
     print("};")
 
 output = None

@@ -134,31 +134,23 @@ static float ninja_ypos = 0;
 static sprite_t ninja = {
     .x = 0,
     .y = 0,
-    .data = ninja_left_32x32,
-    .size_x = 32,
-    .size_y = 32,
+    .data = ninja_left_32x32
 };
 
 static sprite_t up_arrow = {
     .x = 0,
     .y = 0,
     .data = uparrow_32x12,
-    .size_x = 32,
-    .size_y = 12,
 };
 static sprite_t left_arrow = {
     .x = 0,
     .y = 0,
     .data = leftarrow_12x32,
-    .size_x = 12,
-    .size_y = 32,
 };
 static sprite_t right_arrow = {
     .x = 0,
     .y = 0,
     .data = rightarrow_12x32,
-    .size_x = 12,
-    .size_y = 32,
 };
 
 static uint32_t melons_remaining;
@@ -238,8 +230,6 @@ static void set_level(level_t *lvl) {
         sprite_t *m = &melons[i];
         m->x = lvl->melons[i].x / DIMDIV - 8;
         m->y = lvl->melons[i].y / DIMDIV - 8;
-        m->size_x = 16;
-        m->size_y = 16;
         m->data = melon_16x16;
     }
 
@@ -269,8 +259,6 @@ static void set_level(level_t *lvl) {
 
         e->x = walls[i].x + walls[i].width / 2 - 8;
         e->y = walls[i].y - 23;
-        e->size_x = 23;
-        e->size_y = 23;
         e->data = heroic_toast_left_23x23;
 
         if (!lvl->boxes[i].has_enemy) {
@@ -350,9 +338,9 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
                     e->x = w->x;
                 }
             } else {
-                if (e->x + e->size_x >= w->x + w->width) {
+                if (e->x + e->data.size_x >= w->x + w->width) {
                     e->data = heroic_toast_left_23x23;
-                    e->x = w->x + w->width - e->size_x;
+                    e->x = w->x + w->width - e->data.size_x;
                 }
             }
         }
@@ -366,7 +354,7 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
             continue;
 
         sprite_t *e = &enemies[i];
-        if (intersects(e->x, e->y, e->size_x, e->size_y, ninja.x, ninja.y, ninja.size_x, ninja.size_y)) {
+        if (intersects(e->x, e->y, e->data.size_x, e->data.size_y, ninja.x, ninja.y, ninja.data.size_x, ninja.data.size_y)) {
             dead = true;
             break;
         }
@@ -575,8 +563,8 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
     } else {
         left_arrow.x = -100;
     }
-    if (ninja.x + ninja.size_x > VGA_MODE.width) {
-        right_arrow.x = VGA_MODE.width - right_arrow.size_x;
+    if (ninja.x + ninja.data.size_x > VGA_MODE.width) {
+        right_arrow.x = VGA_MODE.width - right_arrow.data.size_x;
         right_arrow.y = ninja.y;
     } else {
         right_arrow.x = -100;
@@ -612,6 +600,10 @@ static void vga_board_init_buttons() {
 } */
 
 int main(void) {
+
+    // Set PSU into PWM mode for reduced ripple (and reduced efficiency)
+    gpio_set_dir(23, true);
+    gpio_pull_up(23);
 
     // Overclock
     vreg_set_voltage(VREG_VOLTAGE_1_30);

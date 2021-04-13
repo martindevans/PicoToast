@@ -74,5 +74,7 @@ static uint16_t __attribute__((aligned(4))) heroic_toast_right_metadata_23x23[] 
 
 static const image_data_t heroic_toast_right_23x23 = {
     .pixels = heroic_toast_right_pixels_23x23,
-    .metadata = (uint32_t*)heroic_toast_right_metadata_23x23
+    .metadata = (uint32_t*)heroic_toast_right_metadata_23x23,
+    .size_x = 23,
+    .size_y = 23
 };

@@ -100,7 +100,7 @@ void __ram_func(sprite_fill16_dma)(uint16_t *dst, uint16_t colour, uint offset, 
 
 void __ram_func(sprite_sprite16_dma)(uint16_t *dst, const sprite_t *sprite, uint16_t raster_y, uint16_t raster_width, int dma_channel)
 {
-    int width = sprite->size_x;
+    int width = sprite->data.size_x;
     const uint16_t *img = sprite->data.pixels;
 
     intersect_t isct = calculate_sprite_span(sprite, raster_y, raster_width, sizeof(uint16_t));

@@ -17,7 +17,7 @@ add_subdirectory(physics)
 pico_sdk_init()
 
 add_executable(toast
-        sprite_demo.c
+        main.c
 )
 
 target_include_directories(toast PRIVATE ${CMAKE_CURRENT_LIST_DIR})

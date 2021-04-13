@@ -1,9 +1,3 @@
-/*
- * Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
-
 #ifndef _SPRITE2_H
 #define _SPRITE2_H
 
@@ -12,23 +6,17 @@
 #include "pico/scanvideo.h"
 #include "pico/scanvideo/composable_scanline.h"
 
-// Helper functions to:
-// - Get a scanbuf into a state where a region of it can be directly rendered to,
-//   and return a pointer to this region
-// - After rendering, manipulate this scanbuffer into a form where PIO can
-//   yeet it out on VGA
-
-typedef struct image_data {
+typedef struct {
     const uint16_t *pixels;
     const uint32_t *metadata;
+    uint8_t size_x;
+    uint8_t size_y;
 } image_data_t;
 
-typedef struct sprite {
+typedef struct {
     int16_t x;
     int16_t y;
     image_data_t data;
-    uint8_t size_x;
-    uint8_t size_y;
 } sprite_t;
 
 typedef struct {
@@ -47,8 +35,8 @@ static int cmp_sprite_x(const void *a, const void *b) {
 // Always-inline else the compiler does rash things like passing structs in memory
 static inline intersect_t get_sprite_intersect(const sprite_t *sp, uint16_t raster_y, uint raster_w)
 {
-    uint8_t size_x = sp->size_x;
-    uint8_t size_y = sp->size_y;
+    uint8_t size_x = sp->data.size_x;
+    uint8_t size_y = sp->data.size_y;
     intersect_t isct = {0};
 
     // Calculate offset to the correct row. Early out if it's not within the bounds of the sprite

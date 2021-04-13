@@ -108,5 +108,7 @@ static uint16_t __attribute__((aligned(4))) ninja_left_metadata_32x32[] = {
 
 static const image_data_t ninja_left_32x32 = {
     .pixels = ninja_left_pixels_32x32,
-    .metadata = (uint32_t*)ninja_left_metadata_32x32
+    .metadata = (uint32_t*)ninja_left_metadata_32x32,
+    .size_x = 32,
+    .size_y = 32
 };

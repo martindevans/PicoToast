@@ -42,5 +42,7 @@ static uint16_t __attribute__((aligned(4))) uparrow_metadata_32x12[] = {
 
 static const image_data_t uparrow_32x12 = {
     .pixels = uparrow_pixels_32x12,
-    .metadata = (uint32_t*)uparrow_metadata_32x12
+    .metadata = (uint32_t*)uparrow_metadata_32x12,
+    .size_x = 32,
+    .size_y = 12
 };

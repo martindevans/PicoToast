@@ -42,5 +42,7 @@ static uint16_t __attribute__((aligned(4))) melon_metadata_16x16[] = {
 
 static const image_data_t melon_16x16 = {
     .pixels = melon_pixels_16x16,
-    .metadata = (uint32_t*)melon_metadata_16x16
+    .metadata = (uint32_t*)melon_metadata_16x16,
+    .size_x = 16,
+    .size_y = 16
 };

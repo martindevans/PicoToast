@@ -75,5 +75,7 @@ static uint16_t __attribute__((aligned(4))) leftarrow_metadata_12x32[] = {
 
 static const image_data_t leftarrow_12x32 = {
     .pixels = leftarrow_pixels_12x32,
-    .metadata = (uint32_t*)leftarrow_metadata_12x32
+    .metadata = (uint32_t*)leftarrow_metadata_12x32,
+    .size_x = 12,
+    .size_y = 32
 };
