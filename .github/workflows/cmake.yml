@@ -63,3 +63,8 @@ jobs:
       shell: bash
       run: |
         cmake --build . --config $BUILD_TYPE -j 4
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v2.2.3
+      path: |
+        ${{runner.workspace}}/build/toast.uf2
