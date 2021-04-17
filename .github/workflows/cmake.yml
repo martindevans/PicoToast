@@ -1,0 +1,65 @@
+name: CMake
+
+on:
+  push:
+  pull_request:
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+  BOARD_TYPE: vga_board
+
+jobs:
+  build:
+    name: ${{matrix.name}}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-20.04
+            name: Linux
+            cache-key: linux
+            cmake-args: '-DPICO_SDK_PATH=$GITHUB_WORKSPACE/pico-sdk -DPICO_SDK_POST_LIST_DIRS=$GITHUB_WORKSPACE/pico-extras -D"PICO_BOARD=vgaboard"'
+            apt-packages: clang-tidy gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+
+    runs-on: ${{matrix.os}}
+
+    env:
+      PICO_SDK_PATH: $GITHUB_WORKSPACE/pico-sdk
+
+    steps:
+    - uses: actions/checkout@v2
+
+    # Check out the Pico SDK
+    - name: Checkout Pico SDK
+      uses: actions/checkout@v2
+      with:
+        repository: raspberrypi/pico-sdk
+        path: pico-sdk
+        submodules: true
+
+    # Check out the Pico Extras
+    - name: Checkout Pico Extras
+      uses: actions/checkout@v2
+      with:
+        repository: raspberrypi/pico-extras
+        path: pico-extras
+        submodules: false  # lwip breaks audio submodule fetchin
+
+    # Linux deps
+    - name: Install deps
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt update && sudo apt install ${{matrix.apt-packages}}
+    - name: Create Build Environment
+      run: cmake -E make_directory ${{runner.workspace}}/build
+
+    - name: Configure CMake
+      shell: bash
+      working-directory: ${{runner.workspace}}/build
+      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE ${{matrix.cmake-args}}
+
+    - name: Build
+      working-directory: ${{runner.workspace}}/build
+      shell: bash
+      run: |
+        cmake --build . --config $BUILD_TYPE -j 4
