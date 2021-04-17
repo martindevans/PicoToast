@@ -62,10 +62,10 @@ jobs:
       working-directory: ${{runner.workspace}}/build
       shell: bash
       run: |
-        cmake --build . --config $BUILD_TYPE -j 4
+        cmake --build . --config $BUILD_TYPE -j $((`nproc`+1))
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v2.2.3
       with:
-        name: UF2 Binary
+        name: toast.uf2
         path: ${{runner.workspace}}/build/toast.uf2
