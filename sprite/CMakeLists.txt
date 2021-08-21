@@ -4,6 +4,7 @@ target_sources(sprite INTERFACE
         $<$<BOOL:${PICO_ON_DEVICE}>:${CMAKE_CURRENT_LIST_DIR}/sprite.S>
         ${CMAKE_CURRENT_LIST_DIR}/sprite.c
         ${CMAKE_CURRENT_LIST_DIR}/sprite.h
+        ${CMAKE_CURRENT_LIST_DIR}/sprite.S
         ${CMAKE_CURRENT_LIST_DIR}/sprite_dma.c
         ${CMAKE_CURRENT_LIST_DIR}/sprite_dma.h
         ${CMAKE_CURRENT_LIST_DIR}/scanline_rendering.c
