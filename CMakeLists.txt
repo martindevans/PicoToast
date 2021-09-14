@@ -17,7 +17,7 @@ add_subdirectory(physics)
 pico_sdk_init()
 
 add_executable(toast
-        sprite_demo.c
+    sprite_demo.c
 )
 
 target_include_directories(toast PRIVATE ${CMAKE_CURRENT_LIST_DIR})
@@ -35,9 +35,10 @@ target_link_libraries(toast
 
 target_compile_definitions(toast PRIVATE
         PICO_SCANVIDEO_MAX_SCANLINE_BUFFER_WORDS=500
+        #SCANLINE_RENDER_MONO
 )
 
-# Send Serial output to UART
+# Send Serial output nowhere
 pico_enable_stdio_usb(toast 0)
 pico_enable_stdio_uart(toast 0)
 

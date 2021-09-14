@@ -8,6 +8,7 @@ target_sources(sprite INTERFACE
         ${CMAKE_CURRENT_LIST_DIR}/sprite_dma.c
         ${CMAKE_CURRENT_LIST_DIR}/sprite_dma.h
         ${CMAKE_CURRENT_LIST_DIR}/scanline_rendering.c
+        ${CMAKE_CURRENT_LIST_DIR}/scanline_rendering_mono.c
         ${CMAKE_CURRENT_LIST_DIR}/scanline_rendering.h
 )
 

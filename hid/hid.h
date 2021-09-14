@@ -53,11 +53,12 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
   tuh_hid_report_info_t* rpt_info_arr = _report_info_arr[instance];
   tuh_hid_report_info_t* rpt_info = NULL;
 
-  if ( rpt_count == 1 && rpt_info_arr[0].report_id == 0)
+  if (rpt_count == 1 && rpt_info_arr[0].report_id == 0)
   {
     // Simple report without report ID as 1st byte
     rpt_info = &rpt_info_arr[0];
-  }else
+  }
+  else
   {
     // Composite report, 1st byte is report ID, data starts from 2nd byte
     uint8_t const rpt_id = report[0];

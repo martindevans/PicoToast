@@ -1,3 +1,5 @@
+#ifndef SCANLINE_RENDER_MONO
+
 #include "pico.h"
 #include "pico/scanvideo.h"
 #include "pico/scanvideo/composable_scanline.h"
@@ -44,13 +46,15 @@ void __time_critical_func(render_loop)() {
     int core_num = get_core_num();
     int dma_channel = dma_claim_unused_channel(true);
 
-    while (true) {
-
+    while (true)
+    {
         // Count down the scanline number for this frame. Once there are no scanlines remaining trigger the
         // game update on core 0
         mutex_enter_blocking(&scanline_countdown_lock);
-        if (scanline_counter == max_scanlines) {
-            if (core_num == 0) {
+        if (scanline_counter == max_scanlines)
+        {
+            if (core_num == 0)
+            {
                 // Release the lock so that the other core can check the countdown
                 mutex_exit(&scanline_countdown_lock);
                 
@@ -70,8 +74,9 @@ void __time_critical_func(render_loop)() {
 
                 // Send a message to the other core telling it that game logic is complete
                 multicore_fifo_push_blocking(MSGC0_GAME_LOGIC_DONE);
-
-            } else {
+            }
+            else
+            {
                 mutex_exit(&scanline_countdown_lock);
                 
                 uint32_t saved_frame_number = frame_number;
@@ -87,7 +92,9 @@ void __time_critical_func(render_loop)() {
                 // Wait for a message from the other core telling us that game logic is complete
                 multicore_fifo_pop_blocking();
             }
-        } else {
+        }
+        else
+        {
             scanline_counter++;
             if (core_num == 0) {
                 core0_scanlines++;
@@ -104,3 +111,5 @@ void __time_critical_func(render_loop)() {
 
     dma_channel_unclaim(dma_channel);
 }
+
+#endif

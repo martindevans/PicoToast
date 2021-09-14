@@ -90,6 +90,8 @@
 #define WALL_JUMP_KICK_Y 50
 #define MIN_BOUNCE_YVEL 2
 
+#define LED_PIN 25
+
 #define LEVEL_COUNT 26
 static level_t *levels[] = {
     &level1,
@@ -272,7 +274,8 @@ static inline bool intersects(int16_t x1, int16_t y1, int16_t w1, int16_t h1, in
     return x1 <= (x2 + w2) && (x1 + w1) >= x2 && y1 <= (y2 + h2) && (y1 + h1) >= y2;
 }
 
-void __time_critical_func(async_update_logic)(uint32_t frame_number) {
+void __time_critical_func(async_update_logic)(uint32_t frame_number)
+{
     tuh_task();
     hid_task();
 }
@@ -311,7 +314,10 @@ void process_kbd_report(hid_keyboard_report_t const *p_new_report) {
     mutex_exit(&hid_input_lock);
 }
 
-void __time_critical_func(frame_update_logic)(uint32_t frame_number) {
+void __time_critical_func(frame_update_logic)(uint32_t frame_number)
+{
+    // Toggle LED
+    //gpio_put(LED_PIN, (frame_number & 1) == 1);
 
     // Load new level if necessary
     if (current_level_index >= LEVEL_COUNT) {
@@ -604,6 +610,10 @@ int main(void) {
     // Set PSU into PWM mode for reduced ripple (and reduced efficiency)
     gpio_set_dir(23, true);
     gpio_pull_up(23);
+
+    // Setup LED to blink
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
 
     // Overclock
     vreg_set_voltage(VREG_VOLTAGE_1_30);
