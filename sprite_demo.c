@@ -168,48 +168,59 @@ static const uint VSYNC_PIN = PICO_SCANVIDEO_COLOR_PIN_BASE + PICO_SCANVIDEO_COL
 static const uint button_pins[] = {0, 6, 11};
 static uint32_t button_state = 0;
 
-void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *dest, int channel) {
+void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *dest, int *dma_channels, size_t dma_channels_count) {
     uint16_t l = scanvideo_scanline_number(dest->scanline_id);
     uint16_t *colour_buf = raw_scanline_prepare(dest, VGA_MODE.width);
 
     // Begin DMA fill of the background.
     const uint16_t bgcol = PICO_SCANVIDEO_PIXEL_FROM_RGB8(0x40, 0xc0, 0xff);
-    sprite_fill16_dma(colour_buf, bgcol, 0, VGA_MODE.width, channel);
+    sprite_fill16_dma(colour_buf, bgcol, 0, VGA_MODE.width, dma_channels[0]);
 
     // Draw all the walls
     for (size_t i = 0; i < level->numboxes; i++) {
-        sprite_rfill16_dma(colour_buf, &walls[i], l, VGA_MODE.width, channel);
+        sprite_rfill16_dma(colour_buf, &walls[i], l, VGA_MODE.width, dma_channels[0]);
     }
 
-    // Draw the melons
-    for (size_t i = 0; i < level->nummelons; i++) {
-        if (melons[i].y < VGA_MODE.height) {
-            sprite_sprite16_dma(colour_buf, &melons[i], l, VGA_MODE.width, channel);
-        }
-    }
+    // Draw the melons, allowing multiple parallel DMA transfers of non-overlapping sprites
+    dma_channel_wait_for_finish_blocking(dma_channels[0]);
+    sprite_sprite16_dma_multiple(colour_buf, melons, level->nummelons, l, VGA_MODE.width, dma_channels, dma_channels_count);
+    for (size_t i = 0; i < dma_channels_count; i++)
+        dma_channel_wait_for_finish_blocking(dma_channels[i]);
 
-    // Draw the enemies
-    for (size_t i = 0; i < level->numboxes; i++) {
-        sprite_sprite16_dma(colour_buf, &enemies[i], l, VGA_MODE.width, channel);
-        //if (enemies[i].y < l && enemies[i].y + enemies[i].size_y > l)
-          //  sprite_fill16_dma(colour_buf, PICO_SCANVIDEO_PIXEL_FROM_RGB8(0xFF, 0xc0, 0xFF), enemies[i].x, enemies[i].size_x, channel);
-    }
+    // // Draw the melons
+    // for (size_t i = 0; i < level->nummelons; i++) {
+    //     if (melons[i].y < VGA_MODE.height) {
+    //         sprite_sprite16_dma(colour_buf, &melons[i], l, VGA_MODE.width, channel);
+    //     }
+    // }
+
+    // Draw the enemies, allowing multiple parallel DMA transfers of non-overlapping sprites
+    dma_channel_wait_for_finish_blocking(dma_channels[0]);
+    sprite_sprite16_dma_multiple(colour_buf, enemies, level->numboxes, l, VGA_MODE.width, dma_channels, dma_channels_count);
+    for (size_t i = 0; i < dma_channels_count; i++)
+        dma_channel_wait_for_finish_blocking(dma_channels[i]);
+
+    // // Draw the enemies
+    // for (size_t i = 0; i < level->numboxes; i++) {
+    //     sprite_sprite16_dma(colour_buf, &enemies[i], l, VGA_MODE.width, dma_channels[0]);
+    // }
 
     // Draw off screen indicators
-    sprite_sprite16_dma(colour_buf, &up_arrow, l, VGA_MODE.width, channel);
-    sprite_sprite16_dma(colour_buf, &left_arrow, l, VGA_MODE.width, channel);
-    sprite_sprite16_dma(colour_buf, &right_arrow, l, VGA_MODE.width, channel);
+    sprite_sprite16_dma(colour_buf, &up_arrow, l, VGA_MODE.width, dma_channels[0]);
+    sprite_sprite16_dma(colour_buf, &left_arrow, l, VGA_MODE.width, dma_channels[0]);
+    sprite_sprite16_dma(colour_buf, &right_arrow, l, VGA_MODE.width, dma_channels[0]);
 
     // Draw the character
-    sprite_sprite16_dma(colour_buf, &ninja, l, VGA_MODE.width, channel);
+    sprite_sprite16_dma(colour_buf, &ninja, l, VGA_MODE.width, dma_channels[0]);
 
     // Draw debug string
     if (debug_str_length > 0) {
-        sprite_string_dma(colour_buf, 10, 10, &debug_str[0], debug_str_length, &SaikyoBlack, l, VGA_MODE.width, channel);
+        sprite_string_dma(colour_buf, 10, 10, &debug_str[0], debug_str_length, &SaikyoBlack, l, VGA_MODE.width, dma_channels[0]);
     }
 
-    // Wait for all DMA job to complete
-    dma_channel_wait_for_finish_blocking(channel);
+    // Wait for all DMA jobs to complete
+    for (size_t i = 0; i < dma_channels_count; i++)
+        dma_channel_wait_for_finish_blocking(dma_channels[i]);
 
     raw_scanline_finish(dest);
 }

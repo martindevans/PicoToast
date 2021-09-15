@@ -6,7 +6,7 @@
 
 void frame_update_logic(uint32_t frame_number);
 void async_update_logic(uint32_t frame_number);
-void render_scanline(scanvideo_scanline_buffer_t *dest, int dma_channel);
+void render_scanline(scanvideo_scanline_buffer_t *dest, int *dma_channels, size_t dma_channels_count);
 
 void init_scanline_rendering(const scanvideo_mode_t *mode);
 

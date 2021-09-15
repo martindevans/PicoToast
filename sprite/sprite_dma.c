@@ -100,7 +100,6 @@ void __ram_func(sprite_fill16_dma)(uint16_t *dst, uint16_t colour, uint offset, 
 
 void __ram_func(sprite_sprite16_dma)(uint16_t *dst, const sprite_t *sprite, uint16_t raster_y, uint16_t raster_width, int dma_channel)
 {
-    int width = sprite->data.size_x;
     const uint16_t *img = sprite->data.pixels;
 
     intersect_t isct = calculate_sprite_span(sprite, raster_y, raster_width, sizeof(uint16_t));
@@ -111,10 +110,58 @@ void __ram_func(sprite_sprite16_dma)(uint16_t *dst, const sprite_t *sprite, uint
     dma_channel_wait_for_finish_blocking(dma_channel);
     
     // If there's alpha in the row fall back to CPU blitting. Otherwise blast the data out with DMA.
+    const int16_t width = sprite->data.size_x;
     if (!isct.span_discontinuous)
         sprite_blit16_dma(dst + x, img + isct.tex_offs_x + isct.tex_offs_y * width, isct.size_x, dma_channel);
     else
         sprite_blit16_alpha(dst + x, img + isct.tex_offs_x + isct.tex_offs_y * width, isct.size_x);
+}
+
+void __ram_func(sprite_sprite16_dma_multiple)(uint16_t *dst, const sprite_t *sprites, size_t sprite_count, uint16_t raster_y, uint16_t raster_width, int *dma_channels, size_t dma_channel_count)
+{
+    // Keep track of number of active DMAs and the extent of pixels being written to by them
+    size_t active_dmas = 0;
+    int16_t active_span_left;
+    int16_t active_span_right;
+
+    for (size_t i = 0; i < sprite_count; i++)
+    {
+        const sprite_t *sprite = &sprites[i];
+
+        // Calculate where the sprite is on screen
+        intersect_t isct = calculate_sprite_span(sprite, raster_y, raster_width, sizeof(uint16_t));
+        if (isct.size_x <= 0)
+            continue;
+        int16_t xl = sprite->x + isct.tex_offs_x;
+        int16_t xr = xl + isct.size_x;
+
+        // Check if the sprite overlaps the active DMA span or if we have run out of DMA channels.
+        // If so, wait for all active DMAs to finish
+        if ((xl >= active_span_left && xr <= active_span_right) || (active_dmas == dma_channel_count))
+        {
+            for (size_t j = 0; j < active_dmas; j++)
+                dma_channel_wait_for_finish_blocking(dma_channels[j]);
+            active_dmas = 0;
+            active_span_left = 0;
+            active_span_right = 0;
+        }
+
+        // Pick a DMA channel to use for this sprite
+        int dma_channel = dma_channels[active_dmas];
+        active_dmas++;
+
+        // If there's alpha in the row fall back to CPU blitting. Otherwise start a DMA transfer
+        const int16_t width = sprite->data.size_x;
+        const uint16_t *img = sprite->data.pixels;
+        if (!isct.span_discontinuous)
+        {
+            sprite_blit16_dma(dst + xl, img + isct.tex_offs_x + isct.tex_offs_y * width, isct.size_x, dma_channel);
+            active_span_left = MIN(active_span_left, xl);
+            active_span_right = MAX(active_span_right, xr);
+        }
+        else
+            sprite_blit16_alpha(dst + xl, img + isct.tex_offs_x + isct.tex_offs_y * width, isct.size_x);
+    }
 }
 
 void __ram_func(sprite_string_dma)(uint16_t *dst, int16_t x, int16_t y, char *chars, uint16_t chars_len, font_map_t *font, uint16_t raster_y, uint16_t raster_width, int dma_channel)
