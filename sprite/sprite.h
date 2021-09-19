@@ -69,7 +69,8 @@ static inline intersect_t get_sprite_intersect(const sprite_t *sp, uint16_t rast
 }
 
 // Sprites may have an array of metadata on the end. One word per line, encodes first opaque pixel, last opaque pixel, and whether the span in between is solid. This allows fewer 
-static inline intersect_t intersect_with_metadata(intersect_t isct, uint32_t meta) {
+static inline intersect_t intersect_with_metadata(intersect_t isct, uint32_t meta)
+{
     int span_end = meta & 0xffff;
     int span_start = (meta >> 16) & 0x7fff;
     int isct_new_start = MAX(isct.tex_offs_x, span_start);
@@ -79,7 +80,8 @@ static inline intersect_t intersect_with_metadata(intersect_t isct, uint32_t met
     return isct;
 }
 
-static inline intersect_t calculate_sprite_span(const sprite_t *sprite, uint raster_y, uint raster_width, int pixel_bytes) {
+static inline intersect_t calculate_sprite_span(const sprite_t *sprite, uint raster_y, uint raster_width, int pixel_bytes)
+{
     // Get the simple intersection. If it's zero width early out right away.
     intersect_t isct = get_sprite_intersect(sprite, raster_y, raster_width);
     if (isct.size_x <= 0)

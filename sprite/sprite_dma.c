@@ -121,8 +121,8 @@ void __ram_func(sprite_sprite16_dma_multiple)(uint16_t *dst, const sprite_t *spr
 {
     // Keep track of number of active DMAs and the extent of pixels being written to by them
     size_t active_dmas = 0;
-    int16_t active_span_left;
-    int16_t active_span_right;
+    int16_t active_span_left = 0;
+    int16_t active_span_right = 0;
 
     for (size_t i = 0; i < sprite_count; i++)
     {
@@ -156,8 +156,8 @@ void __ram_func(sprite_sprite16_dma_multiple)(uint16_t *dst, const sprite_t *spr
         if (!isct.span_discontinuous)
         {
             sprite_blit16_dma(dst + xl, img + isct.tex_offs_x + isct.tex_offs_y * width, isct.size_x, dma_channel);
-            active_span_left = MIN(active_span_left, xl);
-            active_span_right = MAX(active_span_right, xr);
+            active_span_left = active_dmas == 1 ? xl : MIN(active_span_left, xl);
+            active_span_right = active_dmas == 1 ? xr : MAX(active_span_right, xr);
         }
         else
             sprite_blit16_alpha(dst + xl, img + isct.tex_offs_x + isct.tex_offs_y * width, isct.size_x);
