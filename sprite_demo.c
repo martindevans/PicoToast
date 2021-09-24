@@ -413,9 +413,9 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number)
 
     // Read play input from keyboard
     mutex_enter_blocking(&hid_input_lock);
-    in_jump = hid_jump_pressed;
-    in_left = hid_left_pressed;
-    in_right = hid_right_pressed;
+    in_jump |= hid_jump_pressed;
+    in_left |= hid_left_pressed;
+    in_right |= hid_right_pressed;
 
     if (hid_cheat_level_up) {
         current_level_index++;
