@@ -62,13 +62,24 @@ void sprite_sprite16_dma(uint16_t *dst, const sprite_t *sprite, uint16_t raster_
 // - dma_channel_count: number of DMA channels in the buffer
 void sprite_sprite16_dma_multiple(uint16_t *dst, const sprite_t *sprites, size_t sprite_count, uint16_t raster_y, uint16_t raster_width, int *dma_channels, size_t dma_channel_count);
 
-// copy from src to dest using a DMA channel
+// Copy from src to dest using a DMA channel
 // - dst: write to
 // - src: read from
 // - len: number of 16 bit pixels to copy
 // - dma_channel: A channel to use for DMA
 void sprite_blit16_dma(uint16_t *dst, const uint16_t *src, uint len, int dma_channel);
 
-void sprite_string_dma(uint16_t *dst, int16_t x, int16_t y, char *chars, uint16_t chars_len, font_map_t *font, uint16_t raster_y, uint16_t raster_width, int dma_channel);
+// Write a string of characters to the screen using multiple DMA channels
+// - dst: write to
+// - x: x position of text (top left corner)
+// - y: y position of text (top left corner)
+// - chars: text
+// - chars_len: number of characters in `chars`
+// - font: font to use to render text
+// - raster_y: y position of the scanline
+// - raster_width: total size of the `dst` buffer
+// - dma_channels: buffer of DMA channels available to use
+// - dma_channel_count: number of DMA channels in the buffer
+void sprite_string_dma(uint16_t *dst, int16_t x, int16_t y, char *chars, uint16_t chars_len, font_map_t *font, uint16_t raster_y, uint16_t raster_width, int *dma_channels, size_t dma_channel_count);
 
 #endif

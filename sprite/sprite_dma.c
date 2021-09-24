@@ -139,8 +139,7 @@ void __ram_func(sprite_sprite16_dma_multiple)(uint16_t *dst, const sprite_t *spr
         // If so, wait for all active DMAs to finish
         if ((xl >= active_span_left && xr <= active_span_right) || (active_dmas == dma_channel_count))
         {
-            for (size_t j = 0; j < active_dmas; j++)
-                dma_channel_wait_for_finish_blocking(dma_channels[j]);
+            wait_for_dmas(dma_channels, active_dmas);
             active_dmas = 0;
             active_span_left = 0;
             active_span_right = 0;
@@ -164,8 +163,10 @@ void __ram_func(sprite_sprite16_dma_multiple)(uint16_t *dst, const sprite_t *spr
     }
 }
 
-void __ram_func(sprite_string_dma)(uint16_t *dst, int16_t x, int16_t y, char *chars, uint16_t chars_len, font_map_t *font, uint16_t raster_y, uint16_t raster_width, int dma_channel)
+void __ram_func(sprite_string_dma)(uint16_t *dst, int16_t x, int16_t y, char *chars, uint16_t chars_len, font_map_t *font, uint16_t raster_y, uint16_t raster_width, int *dma_channels, size_t dma_channel_count)
 {
+    int next_channel = 0;
+
     // Sanity check font, render nothing for null fonts
     if (font == NULL)
         return;
@@ -230,11 +231,22 @@ void __ram_func(sprite_string_dma)(uint16_t *dst, int16_t x, int16_t y, char *ch
         }
 
         // Copy across as many pixels as necessary
-        if (pixel_copy_count > 0) {
+        if (pixel_copy_count > 0)
+        {
             uint16_t *char_dst = dst + x + prelude;
-            if (discontinuous) {
+            if (discontinuous)
+            {
                 sprite_blit16_alpha(char_dst, char_src, pixel_copy_count);
-            } else {
+            }
+            else
+            {
+
+                // Use DMA channels in sequence, giving each transfer the maximum amount of time to finish before re-using
+                // the channel
+                int dma_channel = dma_channels[next_channel++];
+                if (next_channel >= dma_channel_count) {
+                    next_channel = 0;
+                }
                 sprite_blit16_dma(char_dst, char_src, pixel_copy_count, dma_channel);
             }
         }

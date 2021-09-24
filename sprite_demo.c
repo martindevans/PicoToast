@@ -160,7 +160,9 @@ static sprite_t *melons = NULL;
 static sprite_t *enemies = NULL;
 static rect_fill_t *walls = NULL;
 
-#define DEBUG_STR_MAX_LEN 50
+static uint64_t render_micros = 0;
+
+#define DEBUG_STR_MAX_LEN 150
 static int debug_str_length = 0;
 static char debug_str[DEBUG_STR_MAX_LEN];
 
@@ -168,7 +170,10 @@ static const uint VSYNC_PIN = PICO_SCANVIDEO_COLOR_PIN_BASE + PICO_SCANVIDEO_COL
 static const uint button_pins[] = {0, 6, 11};
 static uint32_t button_state = 0;
 
-void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *dest, int *dma_channels, size_t dma_channels_count) {
+void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *dest, int *dma_channels, size_t dma_channels_count)
+{
+    uint64_t start_us = time_us_64();
+
     uint16_t l = scanvideo_scanline_number(dest->scanline_id);
     uint16_t *colour_buf = raw_scanline_prepare(dest, VGA_MODE.width);
 
@@ -184,26 +189,12 @@ void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *des
     // Draw the melons, allowing multiple parallel DMA transfers of non-overlapping sprites
     dma_channel_wait_for_finish_blocking(dma_channels[0]);
     sprite_sprite16_dma_multiple(colour_buf, melons, level->nummelons, l, VGA_MODE.width, dma_channels, dma_channels_count);
-    for (size_t i = 0; i < dma_channels_count; i++)
-        dma_channel_wait_for_finish_blocking(dma_channels[i]);
-
-    // // Draw the melons
-    // for (size_t i = 0; i < level->nummelons; i++) {
-    //     if (melons[i].y < VGA_MODE.height) {
-    //         sprite_sprite16_dma(colour_buf, &melons[i], l, VGA_MODE.width, channel);
-    //     }
-    // }
+    wait_for_dmas(dma_channels, dma_channels_count);
 
     // Draw the enemies, allowing multiple parallel DMA transfers of non-overlapping sprites
     dma_channel_wait_for_finish_blocking(dma_channels[0]);
     sprite_sprite16_dma_multiple(colour_buf, enemies, level->numboxes, l, VGA_MODE.width, dma_channels, dma_channels_count);
-    for (size_t i = 0; i < dma_channels_count; i++)
-        dma_channel_wait_for_finish_blocking(dma_channels[i]);
-
-    // // Draw the enemies
-    // for (size_t i = 0; i < level->numboxes; i++) {
-    //     sprite_sprite16_dma(colour_buf, &enemies[i], l, VGA_MODE.width, dma_channels[0]);
-    // }
+    wait_for_dmas(dma_channels, dma_channels_count);
 
     // Draw off screen indicators
     sprite_sprite16_dma(colour_buf, &up_arrow, l, VGA_MODE.width, dma_channels[0]);
@@ -215,17 +206,26 @@ void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *des
 
     // Draw debug string
     if (debug_str_length > 0) {
-        sprite_string_dma(colour_buf, 10, 10, &debug_str[0], debug_str_length, &SaikyoBlack, l, VGA_MODE.width, dma_channels[0]);
+        dma_channel_wait_for_finish_blocking(dma_channels[0]);
+        sprite_string_dma(colour_buf, 10, 10, &debug_str[0], debug_str_length, &SaikyoBlack, l, VGA_MODE.width, dma_channels, dma_channels_count);
+        wait_for_dmas(dma_channels, dma_channels_count);
     }
 
     // Wait for all DMA jobs to complete
-    for (size_t i = 0; i < dma_channels_count; i++)
-        dma_channel_wait_for_finish_blocking(dma_channels[i]);
+    wait_for_dmas(dma_channels, dma_channels_count);
+
+    // Update counter of total rendering time
+    // with multicore rendering this will cause bad things since both cores will read/write
+    #if SCANLINE_RENDER_MONO
+        uint64_t elapsed_us = time_us_64() - start_us;
+        render_micros += elapsed_us;
+    #endif
 
     raw_scanline_finish(dest);
 }
 
-static void set_level(level_t *lvl) {
+static void set_level(level_t *lvl)
+{
     level = lvl;
 
     ninja_xpos = level->spawnX;
@@ -278,10 +278,10 @@ static void set_level(level_t *lvl) {
             e->y = 10000;
         }
     }
-
 }
 
-static inline bool intersects(int16_t x1, int16_t y1, int16_t w1, int16_t h1, int16_t x2, int16_t y2, int16_t w2, int16_t h2) {
+static inline bool intersects(int16_t x1, int16_t y1, int16_t w1, int16_t h1, int16_t x2, int16_t y2, int16_t w2, int16_t h2)
+{
     return x1 <= (x2 + w2) && (x1 + w1) >= x2 && y1 <= (y2 + h2) && (y1 + h1) >= y2;
 }
 
@@ -296,8 +296,8 @@ static bool hid_jump_pressed = false;
 static bool hid_left_pressed = false;
 static bool hid_right_pressed = false;
 static bool hid_cheat_level_up = false;
-void process_kbd_report(hid_keyboard_report_t const *p_new_report) {
-
+void process_kbd_report(hid_keyboard_report_t const *p_new_report)
+{
     mutex_enter_blocking(&hid_input_lock);
     hid_jump_pressed = false;
     hid_left_pressed = false;
@@ -328,7 +328,7 @@ void process_kbd_report(hid_keyboard_report_t const *p_new_report) {
 void __time_critical_func(frame_update_logic)(uint32_t frame_number)
 {
     // Toggle LED
-    //gpio_put(LED_PIN, (frame_number & 1) == 1);
+    gpio_put(LED_PIN, (frame_number & 8) == 8);
 
     // Load new level if necessary
     if (current_level_index >= LEVEL_COUNT) {
@@ -587,10 +587,22 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number)
         right_arrow.x = -100;
     }
 
-    debug_str_length = snprintf(debug_str, DEBUG_STR_MAX_LEN, "F:%u L:%u R:%u T:%u B:%u LVL:%u", frame_number, touching_left_wall, touching_right_wall, touching_roof, touching_floor, current_level_index);
+    debug_str_length = snprintf(
+        debug_str,
+        DEBUG_STR_MAX_LEN,
+        "F:%u L:%u R:%u T:%u B:%u LVL:%u RUS:%u",
+        frame_number,
+        touching_left_wall,
+        touching_right_wall,
+        touching_roof,
+        touching_floor,
+        current_level_index,
+        (unsigned int)render_micros
+    );
+    render_micros = 0;
 }
 
-/* static void __time_critical_func(vga_board_button_irq_handler)() {
+static void __time_critical_func(vga_board_button_irq_handler)() {
     int vsync_current_level = gpio_get(VSYNC_PIN);
     gpio_acknowledge_irq(VSYNC_PIN, vsync_current_level ? GPIO_IRQ_EDGE_RISE : GPIO_IRQ_EDGE_FALL);
 
@@ -610,14 +622,15 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number)
     }
 }
 
-static void vga_board_init_buttons() {
+static void vga_board_init_buttons()
+{
     gpio_set_irq_enabled(VSYNC_PIN, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
     irq_set_exclusive_handler(IO_IRQ_BANK0, vga_board_button_irq_handler);
     irq_set_enabled(IO_IRQ_BANK0, true);
-} */
+}
 
-int main(void) {
-
+int main(void)
+{
     // Set PSU into PWM mode for reduced ripple (and reduced efficiency)
     gpio_set_dir(23, true);
     gpio_pull_up(23);
@@ -632,7 +645,7 @@ int main(void) {
 
     // Setup serial communication and buttons
     stdio_init_all();
-    //vga_board_init_buttons();
+    vga_board_init_buttons();
 
     // Initialise USB system
     board_init();

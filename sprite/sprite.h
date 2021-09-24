@@ -2,9 +2,10 @@
 #define _SPRITE2_H
 
 #include "pico/types.h"
-
 #include "pico/scanvideo.h"
 #include "pico/scanvideo/composable_scanline.h"
+
+#include "hardware/dma.h"
 
 typedef struct {
     const uint16_t *pixels;
@@ -30,6 +31,12 @@ static int cmp_sprite_x(const void *a, const void *b) {
     sprite_t *aa = (sprite_t*)a;
     sprite_t *bb = (sprite_t*)b;
     return aa->x - bb->x;
+}
+
+static inline intersect_t wait_for_dmas(int *dma_channels, size_t dma_channels_count)
+{
+    for (size_t i = 0; i < dma_channels_count; i++)
+        dma_channel_wait_for_finish_blocking(dma_channels[i]);
 }
 
 // Always-inline else the compiler does rash things like passing structs in memory
