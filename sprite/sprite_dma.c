@@ -83,7 +83,7 @@ void __ram_func(sprite_fill16_dma)(uint16_t *dst, uint16_t colour, uint offset, 
             break;
     }
 
-    // Configure DMA to copy 32 bits of data at a time
+    // Configure DMA to copy 16 bits of data at a time
     dma_channel_config c = dma_channel_get_default_config(dma_channel);
     channel_config_set_transfer_data_size(&c, DMA_SIZE_16);
     channel_config_set_read_increment(&c, false);

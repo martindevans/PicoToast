@@ -42,11 +42,13 @@ enum {
     MSGC1_RENDERING_DONE = 1,
 } msg_from_core1;
 
-void __time_critical_func(render_loop)() {
+void __time_critical_func(render_loop)()
+{
     int core_num = get_core_num();
 
-    int dma_channels[SCANLINE_RENDER_PARALLEL_DMA];
-    for (size_t i = 0; i < SCANLINE_RENDER_PARALLEL_DMA; i++)
+    const int dma_channel_count = SCANLINE_RENDER_PARALLEL_DMA / 2;
+    int dma_channels[dma_channel_count];
+    for (size_t i = 0; i < dma_channel_count; i++)
         dma_channels[i] = dma_claim_unused_channel(true);
 
     while (true)
@@ -108,12 +110,12 @@ void __time_critical_func(render_loop)() {
         }
 
         scanvideo_scanline_buffer_t *scanline_buffer = scanvideo_begin_scanline_generation(true);
-        render_scanline(scanline_buffer, dma_channels, SCANLINE_RENDER_PARALLEL_DMA);
+        render_scanline(scanline_buffer, dma_channels, dma_channel_count);
         scanvideo_end_scanline_generation(scanline_buffer);
     }
 
     // Unclaim all those DMA channels again
-    for (size_t i = 0; i < SCANLINE_RENDER_PARALLEL_DMA; i++)
+    for (size_t i = 0; i < dma_channel_count; i++)
         dma_channel_unclaim(true);
 }
 

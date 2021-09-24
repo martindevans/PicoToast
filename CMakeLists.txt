@@ -36,7 +36,8 @@ target_link_libraries(toast
 target_compile_definitions(toast PRIVATE
         PICO_SCANVIDEO_MAX_SCANLINE_BUFFER_WORDS=500
         SCANLINE_RENDER_MONO
-        SCANLINE_RENDER_PARALLEL_DMA=8
+        SCANLINE_RENDER_PARALLEL_DMA=10
+        DEBUG
 )
 
 # Send Serial output nowhere

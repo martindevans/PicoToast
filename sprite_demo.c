@@ -160,7 +160,8 @@ static sprite_t *melons = NULL;
 static sprite_t *enemies = NULL;
 static rect_fill_t *walls = NULL;
 
-static uint64_t render_micros = 0;
+static uint64_t render_micros_core0 = 0;
+static uint64_t render_micros_core1 = 0;
 
 #define DEBUG_STR_MAX_LEN 150
 static int debug_str_length = 0;
@@ -205,20 +206,30 @@ void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *des
     sprite_sprite16_dma(colour_buf, &ninja, l, VGA_MODE.width, dma_channels[0]);
 
     // Draw debug string
-    if (debug_str_length > 0) {
-        dma_channel_wait_for_finish_blocking(dma_channels[0]);
-        sprite_string_dma(colour_buf, 10, 10, &debug_str[0], debug_str_length, &SaikyoBlack, l, VGA_MODE.width, dma_channels, dma_channels_count);
-        wait_for_dmas(dma_channels, dma_channels_count);
-    }
+    #ifdef DEBUG
+        if (debug_str_length > 0) {
+            dma_channel_wait_for_finish_blocking(dma_channels[0]);
+            sprite_string_dma(colour_buf, 10, 10, &debug_str[0], debug_str_length, &SaikyoBlack, l, VGA_MODE.width, dma_channels, dma_channels_count);
+            wait_for_dmas(dma_channels, dma_channels_count);
+        }
+    #endif
 
     // Wait for all DMA jobs to complete
     wait_for_dmas(dma_channels, dma_channels_count);
 
-    // Update counter of total rendering time
-    // with multicore rendering this will cause bad things since both cores will read/write
-    #if SCANLINE_RENDER_MONO
-        uint64_t elapsed_us = time_us_64() - start_us;
-        render_micros += elapsed_us;
+    // Update counters of total rendering time
+    uint64_t elapsed_us = time_us_64() - start_us;
+    if (get_core_num() == 0) {
+        render_micros_core0 += elapsed_us;
+    } else {
+        render_micros_core1 += elapsed_us;
+    }
+
+    // Draw a bar indicating rendering cost (1 pixel per microsecond)
+    #ifdef DEBUG
+        const uint16_t cost_col = PICO_SCANVIDEO_PIXEL_FROM_RGB8(0xDD, 0x10, 0x10);
+        sprite_fill16_dma(colour_buf, cost_col, 0, (uint)elapsed_us, dma_channels[0]);
+        dma_channel_wait_for_finish_blocking(dma_channels[0]);
     #endif
 
     raw_scanline_finish(dest);
@@ -587,19 +598,24 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number)
         right_arrow.x = -100;
     }
 
+    uint64_t render_micros = render_micros_core0 + render_micros_core1;
+    float balance = (float)render_micros_core0 / (float)render_micros;
+    render_micros_core0 = 0;
+    render_micros_core1 = 0;
+
     debug_str_length = snprintf(
         debug_str,
         DEBUG_STR_MAX_LEN,
-        "F:%u L:%u R:%u T:%u B:%u LVL:%u RUS:%u",
+        "F:%u L:%u R:%u T:%u B:%u LVL:%u RUS:%u RBAL:%.2f",
         frame_number,
         touching_left_wall,
         touching_right_wall,
         touching_roof,
         touching_floor,
         current_level_index,
-        (unsigned int)render_micros
+        (unsigned int)render_micros,
+        balance
     );
-    render_micros = 0;
 }
 
 static void __time_critical_func(vga_board_button_irq_handler)() {
