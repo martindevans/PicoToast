@@ -12,6 +12,7 @@ add_subdirectory(sprite)
 add_subdirectory(levels)
 add_subdirectory(content)
 add_subdirectory(physics)
+add_subdirectory(audio)
 
 # initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
@@ -31,6 +32,7 @@ target_link_libraries(toast
     sprite
     tinyusb_host
     tinyusb_board
+    audio
 )
 
 target_compile_definitions(toast PRIVATE

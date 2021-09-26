@@ -1,7 +1,7 @@
 #ifndef _level17_H
 #define _level17_H
 
-#include "levels.h"
+#include "level.h"
 
 box_t level17_boxes[] = {
     {

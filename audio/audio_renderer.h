@@ -1,3 +1,6 @@
+#ifndef _AUDIOSYS_RENDERER_H
+#define _AUDIOSYS_RENDERER_H
+
 #include "pico/audio_i2s.h"
 
 #include "hardware/dma.h"
@@ -9,6 +12,10 @@
 
 #ifndef AUDIOSYS_SAMPLES_PER_BUFFER
     #define AUDIOSYS_SAMPLES_PER_BUFFER 200
+#endif
+
+#ifndef AUDIOSYS_NUM_BUFFERS
+    #define AUDIOSYS_NUM_BUFFERS 5
 #endif
 
 // Initialise the audio system and return a producer queue
@@ -26,7 +33,7 @@ audio_buffer_pool_t *init_audio()
         .sample_stride = 1
     };
 
-    audio_buffer_pool_t *producer_pool = audio_new_producer_pool(&producer_format, 3, AUDIOSYS_SAMPLES_PER_BUFFER);
+    audio_buffer_pool_t *producer_pool = audio_new_producer_pool(&producer_format, AUDIOSYS_NUM_BUFFERS, AUDIOSYS_SAMPLES_PER_BUFFER);
 
     audio_i2s_config_t config = {
         .data_pin = PICO_AUDIO_I2S_DATA_PIN,
@@ -49,3 +56,5 @@ audio_buffer_pool_t *init_audio()
 
     return producer_pool;
 }
+
+#endif

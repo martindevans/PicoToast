@@ -64,7 +64,7 @@ def main():
     print(f"#ifndef _{name}_H")
     print(f"#define _{name}_H")
     print()
-    print("#include \"levels.h\"")
+    print("#include \"level.h\"")
     print()
     print(f"box_t {name}_boxes[] = {{")
     for box in boxes:
