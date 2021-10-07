@@ -34,6 +34,7 @@
 #include "sprite_dma.h"
 #include "physics/aabb.h"
 #include "sprite/scanline_rendering.h"
+#include "audio/audio_renderer.h"
 
 #include "content/melon.h"
 #include "content/ninja_left.h"
@@ -107,6 +108,8 @@ static char debug_str[DEBUG_STR_MAX_LEN];
 static const uint VSYNC_PIN = PICO_SCANVIDEO_COLOR_PIN_BASE + PICO_SCANVIDEO_COLOR_PIN_COUNT + 1;
 static const uint button_pins[] = {0, 6, 11};
 static uint32_t button_state = 0;
+
+audio_buffer_pool_t *audio_producer_queue;
 
 void __time_critical_func(render_scanline)(struct scanvideo_scanline_buffer *dest, int *dma_channels, size_t dma_channels_count)
 {
@@ -540,6 +543,7 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number)
     render_micros_core0 = 0;
     render_micros_core1 = 0;
 
+#if DEBUG
     debug_str_length = snprintf(
         debug_str,
         DEBUG_STR_MAX_LEN,
@@ -553,9 +557,11 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number)
         (unsigned int)render_micros,
         balance
     );
+#endif
 }
 
-static void __time_critical_func(vga_board_button_irq_handler)() {
+static void __time_critical_func(vga_board_button_irq_handler)()
+{
     int vsync_current_level = gpio_get(VSYNC_PIN);
     gpio_acknowledge_irq(VSYNC_PIN, vsync_current_level ? GPIO_IRQ_EDGE_RISE : GPIO_IRQ_EDGE_FALL);
 
@@ -608,12 +614,13 @@ int main(void)
     current_level_index = 0;
     set_level(levels[current_level_index]);
 
-    // Initialise audio system
-    //audio_producer_queue = init_audio();
-
     // Initialise video system
     mutex_init(&hid_input_lock);
     init_scanline_rendering(&VGA_MODE);
+
+    // Initialise audio system
+    int audio_dma = dma_claim_unused_channel(true);
+    audio_producer_queue = init_audio(audio_dma);
 
     // Enter the infinite video loop
     render_loop();
