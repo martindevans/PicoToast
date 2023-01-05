@@ -535,6 +535,7 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number)
         right_arrow.x = -100;
     }
 
+#ifdef DEBUG
     uint64_t render_micros = render_micros_core0 + render_micros_core1;
     float balance = (float)render_micros_core0 / (float)render_micros;
     render_micros_core0 = 0;
@@ -553,6 +554,7 @@ void __time_critical_func(frame_update_logic)(uint32_t frame_number)
         (unsigned int)render_micros,
         balance
     );
+#endif
 }
 
 static void __time_critical_func(vga_board_button_irq_handler)() {
@@ -582,6 +584,24 @@ static void vga_board_init_buttons()
     irq_set_enabled(IO_IRQ_BANK0, true);
 }
 
+static image_data_t* copy_imgdata_to_memory(const image_data_t* original)
+{
+    image_data_t* inmem = malloc(sizeof(image_data_t));
+    inmem->size_x = original->size_x;
+    inmem->size_y = original->size_y;
+
+    size_t pixel_bytes = original->size_x * original->size_y * 2;
+    size_t metadata_bytes = original->size_y * 2;
+
+    inmem->pixels = malloc(pixel_bytes);
+    memcpy((void*)inmem->pixels, (void*)original->pixels, pixel_bytes);
+
+    inmem->metadata = malloc(metadata_bytes);
+    memcpy((void*)inmem->metadata, (void*)original->metadata, metadata_bytes);
+
+    return inmem;
+}
+
 int main(void)
 {
     // Set PSU into PWM mode for reduced ripple (and reduced efficiency)
@@ -599,6 +619,12 @@ int main(void)
     // Setup serial communication and buttons
     stdio_init_all();
     vga_board_init_buttons();
+
+    // Copy sprite content into memory from flash, to take some pressure off the XIP cache during rendering
+    copy_imgdata_to_memory(&melon_16x16);
+    up_arrow.data = *copy_imgdata_to_memory(&uparrow_32x12);
+    left_arrow.data = *copy_imgdata_to_memory(&leftarrow_12x32);
+    right_arrow.data = *copy_imgdata_to_memory(&rightarrow_12x32);
 
     // Initialise USB system
     board_init();

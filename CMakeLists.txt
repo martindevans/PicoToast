@@ -36,10 +36,23 @@ target_link_libraries(toast
 )
 
 target_compile_definitions(toast PRIVATE
-        PICO_SCANVIDEO_MAX_SCANLINE_BUFFER_WORDS=500
-        SCANLINE_RENDER_MONO
-        SCANLINE_RENDER_PARALLEL_DMA=10
-        DEBUG
+    # Disable Pico alarm functions to save some binary space (https://raspberrypi.github.io/pico-sdk-doxygen/group__alarm.html)
+    PICO_TIME_DEFAULT_ALARM_POOL_DISABLED=0
+
+    # Disable checking if this is running on aimsulated Pico hardware to save some binary space
+    PICO_NO_FPGA_CHECK=1
+
+    # Set the size of the scanline buffer
+    PICO_SCANVIDEO_MAX_SCANLINE_BUFFER_WORDS=500
+
+    # Use single core rendering
+    SCANLINE_RENDER_MONO
+
+    # How many DMAs to claim for rendering (max)
+    SCANLINE_RENDER_PARALLEL_DMA=10
+
+    # Display debug test on screen
+    DEBUG
 )
 
 # Send Serial output nowhere
